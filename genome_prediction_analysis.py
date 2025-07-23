@@ -1,11 +1,26 @@
-# --- SCRIPT: final_analysis.py ---
+#!/home2020/home/icube/nhaas/.conda/envs/TransStop/bin/python
 
+#SBATCH -p publicgpu
+#SBATCH -N 1
+#SBATCH -x hpc-n932
+#SBATCH --gres=gpu:1
+#SBATCH --constraint="gpuh100|gpua100|gpul40s|gpua40|gpurtx6000|gpuv100"
+#SBATCH --mail-type=END
+#SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
+#SBATCH --job-name=genome_prediction_analysis
+#SBATCH --output=genome_prediction_analysis_%j.out
+
+# import cudf.pandas
+# cudf.pandas.install()
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+from scipy import stats
 from tqdm import tqdm
+import plotly.express as px
+
 
 # --- Configuration ---
 RESULTS_DIR = "./results/"
@@ -244,10 +259,10 @@ print(f"Nombre de PTCs où le gain est supérieur à 1.0 RT : {gain_threshold_1_
 
 
 # --- Amélioration 3.3 (Revisité): Analyser les Cas de Désaccord à Fort Impact ---
-print("\n--- Analyse des Cas de Désaccord à Fort Impact (Gain de RT > 2.0) ---")
+print("\n--- Analyse des Cas de Désaccord à Fort Impact (Gain de RT > 1.0) ---")
 
 # 1. Définir le seuil et filtrer le DataFrame
-gain_threshold = 2.0
+gain_threshold = 1.0
 high_gain_df = disagreement_df[disagreement_df['our_gain'] > gain_threshold].copy()
 num_high_gain_cases = len(high_gain_df)
 
@@ -274,7 +289,7 @@ if num_high_gain_cases > 0:
     # 3. Renommer les colonnes de manière explicite et robuste, quels que soient leurs noms par défaut
     stop_type_high_gain_df.columns = ['Stop_Type', 'Proportion']
     # 4. Ajouter la colonne de groupe
-    stop_type_high_gain_df['Groupe'] = 'Cas à Fort Impact (Gain > 2.0)'
+    stop_type_high_gain_df['Groupe'] = 'Cas à Fort Impact (Gain > 1.0)'
 
 
     # --- Traitement pour le groupe "Baseline" ---
@@ -327,7 +342,7 @@ if num_high_gain_cases > 0:
 
     plt.figure(figsize=(12, 10))
     barplot_pairs = sns.barplot(x=change_pair_counts.values, y=change_pair_counts.index, palette='viridis', hue=change_pair_counts.index, dodge=False, legend=False)
-    plt.title('Top 15 des "Changements d\'Avis" à Fort Impact (Gain > 2.0)', fontsize=18)
+    plt.title('Top 15 des "Changements d\'Avis" à Fort Impact (Gain > 1.0)', fontsize=18)
     plt.xlabel('Nombre de PTCs', fontsize=14)
     plt.ylabel('Changement de Drogue (Toledano -> Notre Modèle)', fontsize=14)
     plt.grid(axis='x', linestyle='--')
@@ -344,4 +359,221 @@ if num_high_gain_cases > 0:
 else:
     print(f"Aucun cas de désaccord trouvé avec un gain de performance > {gain_threshold}.")
 
+# --- ANALYSE 3 (Revisité): PROFIL ET HIÉRARCHIE D'EFFICACITÉ DES DROGUES ---
+print("\n--- Début de l'Analyse 3: Profil et Hiérarchie d'Efficacité des Drogues ---")
+
+# 1. Identifier la meilleure drogue pour chaque PTC (nécessaire pour les deux analyses)
+print("Identification de la meilleure drogue pour chaque PTC...")
+df['our_best_drug'] = df[OUR_PREDS_COLS].rename(columns=OUR_MAP).idxmax(axis=1)
+
+
+# --- Visualisation 1: Sunburst Plot (Hiérarchie Stop Type -> Meilleure Drogue) ---
+print("Génération du Sunburst Plot...")
+
+
+# Préparer les données : compter les occurrences de chaque paire (stop_type, best_drug)
+if 'stop_type' in df.columns:
+    sunburst_data = df.groupby(['stop_type', 'our_best_drug']).size().reset_index(name='ptc_count')
+
+    # Créer la figure interactive
+    fig = px.sunburst(
+        sunburst_data,
+        path=['stop_type', 'our_best_drug'],
+        values='ptc_count',
+        color='stop_type',
+        color_discrete_map={'uga':'#2ca02c', 'uag':'#d62728', 'uaa':'#ff7f0e'},
+        title='Répartition Hiérarchique de la Drogue Optimale par Type de Codon Stop'
+    )
+
+    # Améliorer la lisibilité
+    fig.update_layout(
+        margin=dict(t=50, l=25, r=25, b=25),
+        font_size=14,
+        title_font_size=22
+    )
+    fig.update_traces(textinfo="label+percent entry")
+
+    # Sauvegarder la figure
+    sunburst_path = os.path.join(RESULTS_DIR, "best_drug_sunburst.png")
+    fig.write_image(sunburst_path, width=1200, height=1200, scale=2)
+    print(f"Sunburst plot sauvegardé dans : {sunburst_path}")
+else:
+    print("Colonne 'stop_type' manquante, le Sunburst plot est ignoré.")
+
+
+# --- Visualisation 2 (Version Finale): Ridgeline Plot avec Transformation Log des Données ---
+print("Génération du Ridgeline Plot final pour caractériser le style des drogues...")
+
+# Préparer les données : passer du format large au format long
+print("Mise en forme des données (melt)...")
+df_melted = df[OUR_PREDS_COLS].melt(var_name='drug_col', value_name='predicted_rt')
+df_melted['drug'] = df_melted['drug_col'].map(OUR_MAP)
+
+# --- AMÉLIORATION CLÉ: Appliquer une transformation log1p aux données ---
+# Cela va étirer l'axe des X pour les faibles valeurs et compresser les valeurs élevées.
+df_melted['log_rt'] = np.log1p(df_melted['predicted_rt'])
+
+# Échantillonnage pour la performance (1M de points est suffisant)
+print("Échantillonnage des données pour la visualisation...")
+if len(df_melted) > 1_000_000:
+    df_sample = df_melted.sample(n=1_000_000, random_state=42)
+else:
+    df_sample = df_melted
+
+# Trier les drogues par leur performance médiane pour un ordre visuel logique (du moins au plus efficace)
+drug_order = df_sample.groupby('drug')['predicted_rt'].median().sort_values(ascending=True).index
+
+# 1. Définir le thème et la palette
+sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
+palette = sns.color_palette("viridis_r", len(drug_order))
+
+# 2. Initialiser le FacetGrid
+g = sns.FacetGrid(
+    df_sample, 
+    row="drug", 
+    hue="drug", 
+    aspect=12,
+    height=0.9,
+    palette=palette,
+    row_order=drug_order
+)
+
+# 3. Dessiner les distributions sur les DONNÉES TRANSFORMÉES
+g.map(sns.kdeplot, "log_rt",
+      bw_adjust=.5, clip_on=False,
+      fill=True, alpha=0.9, linewidth=1.5)
+g.map(sns.kdeplot, "log_rt", clip_on=False, color="w", lw=2, bw_adjust=.5)
+g.map(plt.axhline, y=0, linewidth=2, linestyle="-", clip_on=False)
+
+# 4. --- CORRECTION POUR LES LABELS DÉCALÉS ---
+# Au lieu de g.map(label, ...), on boucle sur les axes manuellement.
+# C'est plus robuste et garantit que chaque label est associé au bon axe.
+for i, ax in enumerate(g.axes.flat):
+    drug_name = drug_order[i]
+    ax.text(-0.02, 0.5, drug_name, fontweight="bold", color="black",
+            ha="right", va="center", transform=ax.transAxes, fontsize=16)
+
+# 5. Forcer le chevauchement
+g.fig.subplots_adjust(hspace=-.8)
+
+# 6. Nettoyer les axes et les titres
+g.set_titles("")
+g.set(yticks=[], ylabel="")
+g.despine(bottom=True, left=True)
+
+# 7. Configurer l'axe X
+original_ticks = [0, 1, 2, 3, 4, 5, 6, 7]
+log_ticks = np.log1p(original_ticks)
+plt.xticks(log_ticks, labels=original_ticks)
+plt.xlabel("Readthrough Prédit (RT) - Échelle log-transformée", fontsize=18)
+g.fig.suptitle("Profil de Performance des Drogues : Spécialistes vs. Généralistes", y=1.03, fontsize=24)
+
+ridgeline_path = os.path.join(RESULTS_DIR, "drug_profile_ridgeline_final.png")
+plt.savefig(ridgeline_path, dpi=300, bbox_inches='tight')
+plt.close()
+print(f"Ridgeline plot final sauvegardé dans : {ridgeline_path}")
+
+# --- Visualisation Alternative: Raincloud Plot (Violin Plots) ---
+print("Génération du Raincloud Plot pour caractériser le style des drogues...")
+
+# Préparer les données : passer du format large au format long
+print("Mise en forme des données (melt)...")
+df_melted = df[OUR_PREDS_COLS].melt(var_name='drug_col', value_name='predicted_rt')
+df_melted['drug'] = df_melted['drug_col'].map(OUR_MAP)
+df_melted['log_rt'] = np.log1p(df_melted['predicted_rt'])
+
+print("Échantillonnage des données pour la visualisation...")
+# Pour la "pluie", un échantillon plus petit est plus lisible.
+if len(df_melted) > 200_000:
+    df_sample = df_melted.sample(n=200_000, random_state=42)
+else:
+    df_sample = df_melted
+
+# Trier les drogues par performance médiane pour un ordre visuel logique
+drug_order = df_sample.groupby('drug')['predicted_rt'].median().sort_values(ascending=True).index
+palette = sns.color_palette("viridis_r", len(drug_order))
+
+# --- Construction Manuelle du Raincloud Plot ---
+fig, ax = plt.subplots(figsize=(16, 12))
+
+# Définir les offsets verticaux pour séparer les éléments
+# Chaque drogue aura son "étage" centré sur un entier (0, 1, 2...).
+CLOUD_OFFSET = 0.05   # Le nuage sera au-dessus de la ligne de base
+RAIN_OFFSET = -0.05   # La pluie sera en dessous
+BOX_OFFSET = -0.05   # Le boxplot sera encore plus bas
+
+for i, drug_name in enumerate(drug_order):
+    # 1. --- Préparer les données pour la drogue actuelle ---
+    drug_data = df_sample[df_sample['drug'] == drug_name]
+    drug_log_rt = drug_data['log_rt']
+    color = palette[i]
+    
+    # 2. --- Couche 1: Le "Nuage" (Half-Violin manuel) ---
+    # Calculer l'estimation de la densité par noyau (KDE)
+    kde = stats.gaussian_kde(drug_log_rt, bw_method='scott')
+    x_range = np.linspace(drug_log_rt.min(), drug_log_rt.max(), 100)
+    density = kde(x_range)
+    
+    # Normaliser la hauteur du nuage pour qu'il soit esthétique
+    scaled_density = density / density.max() * 0.4
+    
+    # Dessiner le nuage rempli
+    ax.fill_between(x_range, i + CLOUD_OFFSET, i + CLOUD_OFFSET + scaled_density, 
+                    color=color, alpha=0.5, zorder=1)
+    # Dessiner le contour du nuage
+    ax.plot(x_range, i + CLOUD_OFFSET + scaled_density, color=color, lw=1.5, zorder=2)
+    # Dessiner la ligne de base du nuage
+    ax.plot(x_range, np.full_like(x_range, i + CLOUD_OFFSET), color=color, lw=1.5, zorder=2)
+
+
+    # 3. --- Couche 2: La "Pluie" (Stripplot manuel) ---
+    # Créer un jitter vertical
+    jitter = np.random.uniform(-0.1, 0.1, size=len(drug_log_rt))
+    y_rain = np.full_like(drug_log_rt, i + RAIN_OFFSET) + jitter
+    
+    ax.scatter(drug_log_rt, y_rain, color=color, s=1, alpha=0.1, zorder=3)
+
+
+    # 4. --- Couche 3: Le Boxplot ---
+    # Définir les styles
+    boxprops = {'facecolor': 'none', 'edgecolor': 'black', 'linewidth': 1.5, 'zorder': 4}
+    medianprops = {'color': 'black', 'linewidth': 2, 'zorder': 5}
+    whiskerprops = {'color': 'black', 'linewidth': 1.5, 'zorder': 4}
+    capprops = {'color': 'black', 'linewidth': 1.5, 'zorder': 4}
+    
+    ax.boxplot(drug_log_rt, vert=False, positions=[i + BOX_OFFSET],
+               showfliers=False, showcaps=True,
+               patch_artist=True, # Indispensable pour `facecolor`
+               boxprops=boxprops, medianprops=medianprops,
+               whiskerprops=whiskerprops, capprops=capprops,
+               widths=0.20)
+
+
+# --- Finalisation et Esthétique ---
+# Configurer l'axe Y pour afficher les noms des drogues
+ax.set_yticks(np.arange(len(drug_order)))
+ax.set_yticklabels(drug_order)
+ax.tick_params(axis='y', length=0) # Cacher les petites barres de graduation sur l'axe Y
+
+# Configurer l'axe X pour être lisible en échelle RT originale
+original_ticks = [0, 1, 2, 3, 5, 7]
+log_ticks = np.log1p(original_ticks)
+ax.set_xticks(log_ticks)
+ax.set_xticklabels(labels=original_ticks)
+ax.set_xlabel("Readthrough Prédit (RT) - Échelle log-transformée", fontsize=16)
+ax.set_ylabel("") # Pas besoin de label "Drogue" ici
+
+ax.set_title("Profil de Performance des Drogues (Raincloud Plot)", fontsize=22, pad=20)
+ax.tick_params(axis='x', which='major', labelsize=14)
+ax.grid(True, axis='x', linestyle='--', alpha=0.6)
+
+sns.despine(left=True, bottom=True, trim=True)
+plt.tight_layout()
+
+raincloud_path = os.path.join(RESULTS_DIR, "drug_profile_raincloud_plot_custom.png")
+plt.savefig(raincloud_path, dpi=300)
+plt.close()
+print(f"Raincloud plot personnalisé sauvegardé dans : {raincloud_path}")
+
 print("\n--- Toutes les analyses finales sont terminées. ---")
+
