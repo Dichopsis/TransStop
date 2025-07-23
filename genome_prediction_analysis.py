@@ -1,17 +1,16 @@
 #!/home2020/home/icube/nhaas/.conda/envs/TransStop/bin/python
 
-#SBATCH -p publicgpu
+
 #SBATCH -N 1
-#SBATCH -x hpc-n932
-#SBATCH --gres=gpu:1
-#SBATCH --constraint="gpuh100|gpua100|gpul40s|gpua40|gpurtx6000|gpuv100"
+#SBATCH --time=01:00:00
+#SBATCH --cpus-per-task=32
+#SBATCH --exclusive
 #SBATCH --mail-type=END
 #SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
 #SBATCH --job-name=genome_prediction_analysis
 #SBATCH --output=genome_prediction_analysis_%j.out
 
-# import cudf.pandas
-# cudf.pandas.install()
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -462,7 +461,7 @@ g.set(yticks=[], ylabel="")
 g.despine(bottom=True, left=True)
 
 # 7. Configurer l'axe X
-original_ticks = [0, 1, 2, 3, 4, 5, 6, 7]
+original_ticks = [0, 0.5, 1, 2, 3, 4, 5, 6, 7]
 log_ticks = np.log1p(original_ticks)
 plt.xticks(log_ticks, labels=original_ticks)
 plt.xlabel("Readthrough Prédit (RT) - Échelle log-transformée", fontsize=18)
@@ -484,8 +483,8 @@ df_melted['log_rt'] = np.log1p(df_melted['predicted_rt'])
 
 print("Échantillonnage des données pour la visualisation...")
 # Pour la "pluie", un échantillon plus petit est plus lisible.
-if len(df_melted) > 200_000:
-    df_sample = df_melted.sample(n=200_000, random_state=42)
+if len(df_melted) > 100_000:
+    df_sample = df_melted.sample(n=100_000, random_state=42)
 else:
     df_sample = df_melted
 
@@ -498,9 +497,9 @@ fig, ax = plt.subplots(figsize=(16, 12))
 
 # Définir les offsets verticaux pour séparer les éléments
 # Chaque drogue aura son "étage" centré sur un entier (0, 1, 2...).
-CLOUD_OFFSET = 0.05   # Le nuage sera au-dessus de la ligne de base
-RAIN_OFFSET = -0.05   # La pluie sera en dessous
-BOX_OFFSET = -0.05   # Le boxplot sera encore plus bas
+CLOUD_OFFSET = 0   # Le nuage sera au-dessus de la ligne de base
+RAIN_OFFSET = -0.15   # La pluie sera en dessous
+BOX_OFFSET = -0.15   # Le boxplot sera encore plus bas
 
 for i, drug_name in enumerate(drug_order):
     # 1. --- Préparer les données pour la drogue actuelle ---
@@ -528,10 +527,10 @@ for i, drug_name in enumerate(drug_order):
 
     # 3. --- Couche 2: La "Pluie" (Stripplot manuel) ---
     # Créer un jitter vertical
-    jitter = np.random.uniform(-0.1, 0.1, size=len(drug_log_rt))
+    jitter = np.random.uniform(-0.15, 0.15, size=len(drug_log_rt))
     y_rain = np.full_like(drug_log_rt, i + RAIN_OFFSET) + jitter
     
-    ax.scatter(drug_log_rt, y_rain, color=color, s=1, alpha=0.1, zorder=3)
+    ax.scatter(drug_log_rt, y_rain, color=color, s=2, alpha=0.1, zorder=3)
 
 
     # 4. --- Couche 3: Le Boxplot ---
@@ -546,7 +545,7 @@ for i, drug_name in enumerate(drug_order):
                patch_artist=True, # Indispensable pour `facecolor`
                boxprops=boxprops, medianprops=medianprops,
                whiskerprops=whiskerprops, capprops=capprops,
-               widths=0.20)
+               widths=0.30)
 
 
 # --- Finalisation et Esthétique ---
