@@ -3,8 +3,6 @@
 
 #SBATCH -N 1
 #SBATCH --time=01:00:00
-#SBATCH --cpus-per-task=32
-#SBATCH --exclusive
 #SBATCH --mail-type=END
 #SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
 #SBATCH --job-name=genome_prediction_analysis
@@ -57,71 +55,71 @@ except FileNotFoundError:
 print("Chargement terminé. Taille du DataFrame :", df.shape)
 
 
-# --- ANALYSE 1: PAYSAGE DE TRAITABILITÉ ---
-print("\n--- Début de l'Analyse 1: Paysage de Traitabilité ---")
+# # --- ANALYSE 1: PAYSAGE DE TRAITABILITÉ ---
+# print("\n--- Début de l'Analyse 1: Paysage de Traitabilité ---")
 
-# 1. Calculer les métriques pour chaque PTC
-print("Calcul des métriques de traitabilité pour chaque PTC...")
-df['our_max_pred'] = df[OUR_PREDS_COLS].max(axis=1)
-# Utiliser l'écart-type comme mesure de spécificité
-df['our_specificity'] = df[OUR_PREDS_COLS].std(axis=1)
+# # 1. Calculer les métriques pour chaque PTC
+# print("Calcul des métriques de traitabilité pour chaque PTC...")
+# df['our_max_pred'] = df[OUR_PREDS_COLS].max(axis=1)
+# # Utiliser l'écart-type comme mesure de spécificité
+# df['our_specificity'] = df[OUR_PREDS_COLS].std(axis=1)
 
-# 2. Agréger par gène
-print("Agrégation des métriques par gène...")
-# On filtre les gènes avec un nombre minimum de PTCs pour la robustesse
-gene_counts = df['gene'].value_counts()
-genes_to_keep = gene_counts[gene_counts >= 20].index
-df_filtered_genes = df[df['gene'].isin(genes_to_keep)]
+# # 2. Agréger par gène
+# print("Agrégation des métriques par gène...")
+# # On filtre les gènes avec un nombre minimum de PTCs pour la robustesse
+# gene_counts = df['gene'].value_counts()
+# genes_to_keep = gene_counts[gene_counts >= 20].index
+# df_filtered_genes = df[df['gene'].isin(genes_to_keep)]
 
-gene_treatability = df_filtered_genes.groupby('gene').agg(
-    mean_max_rt=('our_max_pred', 'mean'),
-    mean_specificity=('our_specificity', 'mean'),
-    ptc_count=('gene', 'size')
-).reset_index()
+# gene_treatability = df_filtered_genes.groupby('gene').agg(
+#     mean_max_rt=('our_max_pred', 'mean'),
+#     mean_specificity=('our_specificity', 'mean'),
+#     ptc_count=('gene', 'size')
+# ).reset_index()
 
-# 3. Créer la visualisation du paysage
-print("Génération du graphique 'Paysage de Traitabilité'...")
-plt.figure(figsize=(16, 12))
-scatter = sns.scatterplot(
-    data=gene_treatability,
-    x='mean_max_rt',
-    y='mean_specificity',
-    size='ptc_count',
-    hue='ptc_count',
-    palette='viridis',
-    sizes=(50, 2000),
-    alpha=0.7,
-    edgecolor='k',
-    linewidth=0.5
-)
+# # 3. Créer la visualisation du paysage
+# print("Génération du graphique 'Paysage de Traitabilité'...")
+# plt.figure(figsize=(16, 12))
+# scatter = sns.scatterplot(
+#     data=gene_treatability,
+#     x='mean_max_rt',
+#     y='mean_specificity',
+#     size='ptc_count',
+#     hue='ptc_count',
+#     palette='viridis',
+#     sizes=(50, 2000),
+#     alpha=0.7,
+#     edgecolor='k',
+#     linewidth=0.5
+# )
 
-plt.title('Paysage de Traitabilité des Gènes Humains', fontsize=22, pad=20)
-plt.xlabel('Traitabilité Moyenne (Meilleur RT Prédit)', fontsize=16)
-plt.ylabel('Spécificité Requise (Écart-type des RT Prédits)', fontsize=16)
-plt.grid(True, linestyle='--')
+# plt.title('Paysage de Traitabilité des Gènes Humains', fontsize=22, pad=20)
+# plt.xlabel('Traitabilité Moyenne (Meilleur RT Prédit)', fontsize=16)
+# plt.ylabel('Spécificité Requise (Écart-type des RT Prédits)', fontsize=16)
+# plt.grid(True, linestyle='--')
 
-# Ajouter des annotations pour les quadrants
-xlim = plt.xlim()
-ylim = plt.ylim()
-x_mid = sum(xlim) / 2
-y_mid = sum(ylim) / 2
-plt.text(xlim[0] + 0.05*abs(xlim[0]), ylim[0] + 0.05*abs(ylim[0]), 'Déserts Thérapeutiques\n(Faible RT, Faible Spécificité)', fontsize=14, color='red', alpha=0.8, ha='left')
-plt.text(xlim[1] - 0.05*abs(xlim[1]), ylim[1] - 0.05*abs(ylim[1]), 'Oasis Spécifiques\n(Haut RT, Haute Spécificité)', fontsize=14, color='green', alpha=0.8, ha='right')
-plt.text(xlim[1] - 0.05*abs(xlim[1]), ylim[0] + 0.05*abs(ylim[0]), 'Terrains Faciles\n(Haut RT, Faible Spécificité)', fontsize=14, color='blue', alpha=0.8, ha='right')
+# # Ajouter des annotations pour les quadrants
+# xlim = plt.xlim()
+# ylim = plt.ylim()
+# x_mid = sum(xlim) / 2
+# y_mid = sum(ylim) / 2
+# plt.text(xlim[0] + 0.05*abs(xlim[0]), ylim[0] + 0.05*abs(ylim[0]), 'Déserts Thérapeutiques\n(Faible RT, Faible Spécificité)', fontsize=14, color='red', alpha=0.8, ha='left')
+# plt.text(xlim[1] - 0.05*abs(xlim[1]), ylim[1] - 0.05*abs(ylim[1]), 'Oasis Spécifiques\n(Haut RT, Haute Spécificité)', fontsize=14, color='green', alpha=0.8, ha='right')
+# plt.text(xlim[1] - 0.05*abs(xlim[1]), ylim[0] + 0.05*abs(ylim[0]), 'Terrains Faciles\n(Haut RT, Faible Spécificité)', fontsize=14, color='blue', alpha=0.8, ha='right')
 
-# Annoter quelques gènes importants
-genes_to_annotate = ['TP53', 'APC', 'BRCA1', 'BRCA2', 'DMD', 'CFTR', 'PTEN']
-for gene in genes_to_annotate:
-    if gene in gene_treatability['gene'].values:
-        gene_data = gene_treatability[gene_treatability['gene'] == gene]
-        plt.text(gene_data['mean_max_rt'].values[0], gene_data['mean_specificity'].values[0], gene, 
-                 fontdict={'weight': 'bold', 'size': 12, 'color': 'black'})
+# # Annoter quelques gènes importants
+# genes_to_annotate = ['TP53', 'APC', 'BRCA1', 'BRCA2', 'DMD', 'CFTR', 'PTEN']
+# for gene in genes_to_annotate:
+#     if gene in gene_treatability['gene'].values:
+#         gene_data = gene_treatability[gene_treatability['gene'] == gene]
+#         plt.text(gene_data['mean_max_rt'].values[0], gene_data['mean_specificity'].values[0], gene, 
+#                  fontdict={'weight': 'bold', 'size': 12, 'color': 'black'})
 
-plt.legend(title='Nombre de PTCs', loc='upper left', bbox_to_anchor=(1, 1))
-plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "treatability_landscape.png"), dpi=300)
-plt.close()
-print("Graphique du paysage de traitabilité sauvegardé.")
+# plt.legend(title='Nombre de PTCs', loc='upper left', bbox_to_anchor=(1, 1))
+# plt.tight_layout()
+# plt.savefig(os.path.join(RESULTS_DIR, "treatability_landscape.png"), dpi=300)
+# plt.close()
+# print("Graphique du paysage de traitabilité sauvegardé.")
 
 
 # --- ANALYSE 2: COMPARAISON DES PRÉDICTIONS DE LA MEILLEURE DROGUE ---
@@ -157,8 +155,6 @@ sns.heatmap(
 plt.title('Concordance de la Meilleure Drogue Prédite', fontsize=20, pad=20)
 plt.xlabel('Meilleure Drogue (Notre Modèle)', fontsize=16)
 plt.ylabel('Meilleure Drogue (Modèle Toledano et al.)', fontsize=16)
-plt.text(0.5, 1.05, f'Concordance globale (diagonale) = {agreement_rate:.2%}', 
-         ha='center', va='bottom', transform=plt.gca().transAxes, fontsize=14)
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "best_drug_confusion_matrix.png"), dpi=300)
 plt.close()
@@ -210,22 +206,9 @@ df['our_gain'] = df['our_best_pred_val'] - df['our_pred_for_toledano_choice']
 disagreement_df = df[df['our_best_drug'] != df['toledano_best_drug']].copy()
 
 
-# --- Amélioration 3.1: Générer deux graphiques (linéaire et logarithmique) ---
+# --- Amélioration 3.1: Générer graphique (logarithmique) ---
 
-# Graphique 1: Échelle Linéaire (comme avant)
-print("Génération du graphique de distribution du gain (échelle linéaire)...")
-plt.figure(figsize=(12, 7))
-sns.histplot(disagreement_df['our_gain'], bins=50, kde=True)
-plt.title('Distribution du Gain de Performance Prédit (Cas de Désaccord)', fontsize=16)
-plt.xlabel('Gain de RT (Notre Meilleure Drogue vs. Choix de Toledano)', fontsize=14)
-plt.ylabel('Nombre de PTCs', fontsize=14)
-plt.axvline(x=0, color='red', linestyle='--')
-plt.grid(True)
-plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "disagreement_gain_distribution_linear.png"), dpi=300)
-plt.close()
-
-# Graphique 2: Échelle Logarithmique
+# Graphique: Échelle Logarithmique
 print("Génération du graphique de distribution du gain (échelle logarithmique)...")
 plt.figure(figsize=(12, 7))
 sns.histplot(disagreement_df['our_gain'], bins=50, kde=False) # kde=False est souvent mieux avec l'échelle log
@@ -337,11 +320,11 @@ if num_high_gain_cases > 0:
     high_gain_df['change_pair'] = high_gain_df['toledano_best_drug'] + ' -> ' + high_gain_df['our_best_drug']
     
     # Compter les paires les plus fréquentes
-    change_pair_counts = high_gain_df['change_pair'].value_counts().nlargest(15) # On prend les 15 plus fréquentes
+    change_pair_counts = high_gain_df['change_pair'].value_counts().nlargest(10) # On prend les 10 plus fréquentes
 
     plt.figure(figsize=(12, 10))
     barplot_pairs = sns.barplot(x=change_pair_counts.values, y=change_pair_counts.index, palette='viridis', hue=change_pair_counts.index, dodge=False, legend=False)
-    plt.title('Top 15 des "Changements d\'Avis" à Fort Impact (Gain > 1.0)', fontsize=18)
+    plt.title('Top 10 des "Changements d\'Avis" à Fort Impact (Gain > 1.0)', fontsize=18)
     plt.xlabel('Nombre de PTCs', fontsize=14)
     plt.ylabel('Changement de Drogue (Toledano -> Notre Modèle)', fontsize=14)
     plt.grid(axis='x', linestyle='--')
@@ -367,110 +350,30 @@ df['our_best_drug'] = df[OUR_PREDS_COLS].rename(columns=OUR_MAP).idxmax(axis=1)
 
 
 # --- Visualisation 1: Sunburst Plot (Hiérarchie Stop Type -> Meilleure Drogue) ---
-print("Génération du Sunburst Plot...")
+# --- Visualisation 1 (Revisité): Sunburst Plot Inversé (Hiérarchie Drogue -> Stop Type) ---
+print("Génération du Sunburst Plot Inversé...")
 
-
-# Préparer les données : compter les occurrences de chaque paire (stop_type, best_drug)
 if 'stop_type' in df.columns:
-    sunburst_data = df.groupby(['stop_type', 'our_best_drug']).size().reset_index(name='ptc_count')
+    sunburst_data = df.groupby(['our_best_drug', 'stop_type']).size().reset_index(name='ptc_count')
 
-    # Créer la figure interactive
+    # Créer la figure interactive avec l'ordre inversé dans 'path'
     fig = px.sunburst(
         sunburst_data,
-        path=['stop_type', 'our_best_drug'],
+        path=['our_best_drug', 'stop_type'], # <-- ORDRE INVERSÉ ICI
         values='ptc_count',
-        color='stop_type',
-        color_discrete_map={'uga':'#2ca02c', 'uag':'#d62728', 'uaa':'#ff7f0e'},
-        title='Répartition Hiérarchique de la Drogue Optimale par Type de Codon Stop'
+        color='our_best_drug', # Colorer par drogue est plus logique maintenant
+        color_discrete_sequence=px.colors.qualitative.Vivid,
+        title='Profil de Spécialisation des Drogues par Type de Codon Stop',
     )
 
-    # Améliorer la lisibilité
-    fig.update_layout(
-        margin=dict(t=50, l=25, r=25, b=25),
-        font_size=14,
-        title_font_size=22
-    )
-    fig.update_traces(textinfo="label+percent entry")
+    fig.update_layout(margin=dict(t=50, l=25, r=25, b=25), font_size=16, title_font_size=22)
+    fig.update_traces(textinfo="label+percent parent") # '% parent' montre la composition interne de chaque drogue
 
-    # Sauvegarder la figure
-    sunburst_path = os.path.join(RESULTS_DIR, "best_drug_sunburst.png")
+    sunburst_path = os.path.join(RESULTS_DIR, "best_drug_sunburst_inverted.png")
     fig.write_image(sunburst_path, width=1200, height=1200, scale=2)
-    print(f"Sunburst plot sauvegardé dans : {sunburst_path}")
+    print(f"Sunburst plot inversé sauvegardé dans : {sunburst_path}")
 else:
     print("Colonne 'stop_type' manquante, le Sunburst plot est ignoré.")
-
-
-# --- Visualisation 2 (Version Finale): Ridgeline Plot avec Transformation Log des Données ---
-print("Génération du Ridgeline Plot final pour caractériser le style des drogues...")
-
-# Préparer les données : passer du format large au format long
-print("Mise en forme des données (melt)...")
-df_melted = df[OUR_PREDS_COLS].melt(var_name='drug_col', value_name='predicted_rt')
-df_melted['drug'] = df_melted['drug_col'].map(OUR_MAP)
-
-# --- AMÉLIORATION CLÉ: Appliquer une transformation log1p aux données ---
-# Cela va étirer l'axe des X pour les faibles valeurs et compresser les valeurs élevées.
-df_melted['log_rt'] = np.log1p(df_melted['predicted_rt'])
-
-# Échantillonnage pour la performance (1M de points est suffisant)
-print("Échantillonnage des données pour la visualisation...")
-if len(df_melted) > 1_000_000:
-    df_sample = df_melted.sample(n=1_000_000, random_state=42)
-else:
-    df_sample = df_melted
-
-# Trier les drogues par leur performance médiane pour un ordre visuel logique (du moins au plus efficace)
-drug_order = df_sample.groupby('drug')['predicted_rt'].median().sort_values(ascending=True).index
-
-# 1. Définir le thème et la palette
-sns.set_theme(style="white", rc={"axes.facecolor": (0, 0, 0, 0)})
-palette = sns.color_palette("viridis_r", len(drug_order))
-
-# 2. Initialiser le FacetGrid
-g = sns.FacetGrid(
-    df_sample, 
-    row="drug", 
-    hue="drug", 
-    aspect=12,
-    height=0.9,
-    palette=palette,
-    row_order=drug_order
-)
-
-# 3. Dessiner les distributions sur les DONNÉES TRANSFORMÉES
-g.map(sns.kdeplot, "log_rt",
-      bw_adjust=.5, clip_on=False,
-      fill=True, alpha=0.9, linewidth=1.5)
-g.map(sns.kdeplot, "log_rt", clip_on=False, color="w", lw=2, bw_adjust=.5)
-g.map(plt.axhline, y=0, linewidth=2, linestyle="-", clip_on=False)
-
-# 4. --- CORRECTION POUR LES LABELS DÉCALÉS ---
-# Au lieu de g.map(label, ...), on boucle sur les axes manuellement.
-# C'est plus robuste et garantit que chaque label est associé au bon axe.
-for i, ax in enumerate(g.axes.flat):
-    drug_name = drug_order[i]
-    ax.text(-0.02, 0.5, drug_name, fontweight="bold", color="black",
-            ha="right", va="center", transform=ax.transAxes, fontsize=16)
-
-# 5. Forcer le chevauchement
-g.fig.subplots_adjust(hspace=-.8)
-
-# 6. Nettoyer les axes et les titres
-g.set_titles("")
-g.set(yticks=[], ylabel="")
-g.despine(bottom=True, left=True)
-
-# 7. Configurer l'axe X
-original_ticks = [0, 0.5, 1, 2, 3, 4, 5, 6, 7]
-log_ticks = np.log1p(original_ticks)
-plt.xticks(log_ticks, labels=original_ticks)
-plt.xlabel("Readthrough Prédit (RT) - Échelle log-transformée", fontsize=18)
-g.fig.suptitle("Profil de Performance des Drogues : Spécialistes vs. Généralistes", y=1.03, fontsize=24)
-
-ridgeline_path = os.path.join(RESULTS_DIR, "drug_profile_ridgeline_final.png")
-plt.savefig(ridgeline_path, dpi=300, bbox_inches='tight')
-plt.close()
-print(f"Ridgeline plot final sauvegardé dans : {ridgeline_path}")
 
 # --- Visualisation Alternative: Raincloud Plot (Violin Plots) ---
 print("Génération du Raincloud Plot pour caractériser le style des drogues...")
@@ -555,7 +458,7 @@ ax.set_yticklabels(drug_order)
 ax.tick_params(axis='y', length=0) # Cacher les petites barres de graduation sur l'axe Y
 
 # Configurer l'axe X pour être lisible en échelle RT originale
-original_ticks = [0, 1, 2, 3, 5, 7]
+original_ticks = [0, 0.5, 1, 2, 3, 5, 7]
 log_ticks = np.log1p(original_ticks)
 ax.set_xticks(log_ticks)
 ax.set_xticklabels(labels=original_ticks)
@@ -573,6 +476,86 @@ raincloud_path = os.path.join(RESULTS_DIR, "drug_profile_raincloud_plot_custom.p
 plt.savefig(raincloud_path, dpi=300)
 plt.close()
 print(f"Raincloud plot personnalisé sauvegardé dans : {raincloud_path}")
+
+
+# --- ANALYSE 4 (Version Finale): CAS D'USAGE PRÉDICTIF SUR LE GÈNE CFTR ---
+print("\n--- Début de l'Analyse 4: Cas d'Usage Prédictif sur le Gène CFTR ---")
+
+# ... (le code de chargement et de filtrage de cftr_df reste identique) ...
+if 'gene' not in df.columns:
+    print("La colonne 'gene' est manquante. L'analyse CFTR est ignorée.")
+else:
+    cftr_df = df[df['gene'] == 'CFTR'].copy()
+
+    if cftr_df.empty:
+        print("Aucune donnée trouvée pour le gène CFTR. Analyse ignorée.")
+    else:
+        # --- Analyse 1: Profil Thérapeutique par Mutation (Heatmaps avec Ordre Fixe) ---
+        print("Génération des heatmaps de profil thérapeutique pour les mutations CFTR clés...")
+
+        mutations_of_interest = {
+            'G542X': 542,
+            'R553X': 553,
+            'R1162X': 1162,
+            'W1282X': 1282,
+        }
+        
+        positions_to_analyze = list(mutations_of_interest.values())
+        cftr_mutations_df = cftr_df[cftr_df['position_PTC'].isin(positions_to_analyze)].copy()
+
+        cftr_melted = cftr_mutations_df.melt(
+            id_vars=['position_PTC', 'stop_type'],
+            value_vars=OUR_PREDS_COLS,
+            var_name='drug_col',
+            value_name='predicted_rt'
+        )
+        cftr_melted['drug'] = cftr_melted['drug_col'].map(OUR_MAP)
+        pos_to_name_map = {v: k for k, v in mutations_of_interest.items()}
+        cftr_melted['mutation_name'] = cftr_melted['position_PTC'].map(pos_to_name_map)
+        
+        # --- CORRECTION PRINCIPALE : DÉFINIR UN ORDRE GLOBAL ET FIXE POUR LES DROGUES ---
+        # 1. Calculer la performance moyenne de chaque drogue sur l'ensemble des mutations CFTR sélectionnées.
+        #    Ceci nous donne un classement global de leur pertinence pour ce gène.
+        global_drug_order = cftr_melted.groupby('drug')['predicted_rt'].mean().sort_values(ascending=False).index
+        print("Ordre global des drogues pour les heatmaps (basé sur la performance moyenne) :")
+        print(global_drug_order)
+        # --- FIN DE LA CORRECTION ---
+
+        num_mutations = len(mutations_of_interest)
+        fig, axes = plt.subplots(1, num_mutations, figsize=(5.5 * num_mutations, 10), sharey=True)
+        if num_mutations == 1: axes = [axes]
+
+        vmax = cftr_melted['predicted_rt'].max()
+
+        for i, (name, pos) in enumerate(mutations_of_interest.items()):
+            ax = axes[i]
+            mutation_data = cftr_melted[cftr_melted['position_PTC'] == pos]
+            if not mutation_data.empty:
+                pivot_df = mutation_data.pivot_table(index='drug', columns='stop_type', values='predicted_rt')
+                
+                # --- APPLIQUER L'ORDRE GLOBAL ET FIXE ---
+                # Ré-indexer le DataFrame pour qu'il suive notre ordre prédéfini.
+                # .reindex() gérera les cas où une drogue n'aurait pas de données.
+                pivot_df = pivot_df.reindex(global_drug_order)
+                # --- FIN DE L'APPLICATION ---
+                
+                sns.heatmap(
+                    pivot_df, ax=ax, annot=True, fmt=".2f", cmap='viridis',
+                    linewidths=.5, vmin=0, vmax=vmax, cbar=(i == num_mutations - 1)
+                )
+                ax.set_title(name, fontsize=18, pad=15)
+                ax.set_xlabel("")
+                ax.set_ylabel("Drogue" if i == 0 else "", fontsize=14)
+                ax.tick_params(axis='x', labelsize=12)
+                ax.tick_params(axis='y', labelsize=12)
+
+        fig.text(0.5, 0.04, 'Type de Codon Stop', ha='center', va='center', fontsize=16)
+        fig.suptitle("Profil Thérapeutique Prédit pour des Mutations CFTR Clés", fontsize=22, y=0.98)
+        fig.tight_layout(rect=[0, 0.05, 1, 0.95])
+
+        plt.savefig(os.path.join(RESULTS_DIR, "cftr_therapeutic_profiles_heatmap.png"), dpi=300)
+        plt.close()
+        print("Heatmaps des profils thérapeutiques pour CFTR sauvegardées.")
 
 print("\n--- Toutes les analyses finales sont terminées. ---")
 
