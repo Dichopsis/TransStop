@@ -3,10 +3,13 @@
 #SBATCH -p publicgpu
 #SBATCH -N 1
 #SBATCH -x hpc-n932
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:2
+#SBATCH --time=10:00:00
 #SBATCH --constraint="gpuh100|gpua100|gpul40s|gpua40|gpurtx6000"
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
+#SBATCH --job-name=systematic_evaluation
+#SBATCH --output=systematic_evaluation_%j.out
 
 import pandas as pd
 import numpy as np
@@ -67,7 +70,7 @@ def compute_metrics_global(eval_pred):
 MODEL_KEY = "NucTransformer"
 MODEL_HF_NAME = "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species"
 # *** MISE À JOUR DE LA LISTE DES CONTEXTES ***
-CONTEXTS_TO_TEST = ['seq_context_144', 'seq_context_42', 'seq_context_18', 'seq_context_12', 'seq_context_6']
+CONTEXTS_TO_TEST = ['seq_context_144', 'seq_context_42', 'seq_context_18', 'seq_context_12', 'seq_context_6', 'seq_context_0']
 evaluation_log = []
 
 print(f"\n--- Évaluation des contextes pour le modèle: {MODEL_KEY} ---")
