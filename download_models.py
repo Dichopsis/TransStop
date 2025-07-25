@@ -5,7 +5,6 @@ print("Début du pré-téléchargement des modèles et tokenizers...")
 
 MODELS_TO_DOWNLOAD = {
     "NucTransformer": "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species",
-    "GROVER": "PoetschLab/GROVER"  # Remplacement de OmniDNA par GROVER
 }
 
 for model_key, model_name in MODELS_TO_DOWNLOAD.items():
