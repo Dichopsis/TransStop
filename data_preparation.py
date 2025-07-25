@@ -44,16 +44,17 @@ def create_contexts(sequence):
     seq_18 = sequence[center_start_idx - 9 : center_start_idx + 9 + 3]
     seq_12 = sequence[center_start_idx - 6 : center_start_idx + 6 + 3]
     seq_6 = sequence[center_start_idx - 3 : center_start_idx + 3 + 3]
-    
-    if len(seq_144) != 147 or len(seq_42) != 45 or len(seq_18) != 21 or len(seq_12) != 15 or len(seq_6) != 9:
-        return None, None, None, None, None
+    seq_0 = sequence[center_start_idx : center_start_idx + 3]
 
-    return seq_144, seq_42, seq_18, seq_12, seq_6
+    if len(seq_144) != 147 or len(seq_42) != 45 or len(seq_18) != 21 or len(seq_12) != 15 or len(seq_6) != 9 or len(seq_0) != 3:
+        return None, None, None, None, None, None
+
+    return seq_144, seq_42, seq_18, seq_12, seq_6, seq_0
 
 tqdm.pandas(desc="Creating sequence contexts")
 contexts = master_df['nt_seq'].progress_apply(create_contexts)
 
-master_df[['seq_context_144', 'seq_context_42', 'seq_context_18', 'seq_context_12','seq_context_6']] = pd.DataFrame(contexts.tolist(), index=master_df.index)
+master_df[['seq_context_144', 'seq_context_42', 'seq_context_18', 'seq_context_12','seq_context_6', 'seq_context_0']] = pd.DataFrame(contexts.tolist(), index=master_df.index)
 
 master_df.dropna(subset=['seq_context_144'], inplace=True)
 print(f"Context engineering complete. DataFrame size: {len(master_df)} rows.")
