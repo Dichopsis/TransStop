@@ -118,10 +118,13 @@ class PanDrugTransformerForTrainer(torch.nn.Module):
     
     def forward(self, input_ids, attention_mask, drug_id, labels=None, **kwargs):
         output_attentions = kwargs.get("output_attentions", False)
+        output_hidden_states = kwargs.get("output_hidden_states", False) # Ajout pour les embeddings
+        
         base_model_outputs = self.base_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            output_attentions=output_attentions
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states # Passer l'argument
         )
         # Utiliser le CLS token [:, 0] pour la représentation de la séquence
         cls_embedding = base_model_outputs.last_hidden_state[:, 0]
@@ -131,8 +134,13 @@ class PanDrugTransformerForTrainer(torch.nn.Module):
         combined_embedding = torch.cat([cls_embedding, drug_emb], dim=1)
         logits = self.reg_head(combined_embedding).squeeze(-1)
         
-        if output_attentions:
+        # Retourner les logits, les attentions (si demandé) et les embeddings CLS (si demandé)
+        if output_attentions and output_hidden_states:
+            return logits, base_model_outputs.attentions, cls_embedding
+        elif output_attentions:
             return logits, base_model_outputs.attentions
+        elif output_hidden_states:
+            return logits, cls_embedding
         return logits
 
 # --- Chargement du Modèle de Production ---
@@ -577,5 +585,160 @@ try:
 except Exception as e:
     print(f"Erreur lors de la génération du clustermap : {e}. Étape ignorée.")
 
+# --- SECTION 6.0: VISUALISATION DE L'ESPACE D'EMBEDDING DES SÉQUENCES ---
+print("\n--- 6.0. Visualisation de l'Espace d'Embedding des Séquences ---")
+
+def get_sequence_embeddings(dataframe, tokenizer, model, device, context_col, batch_size=64):
+    """
+    Extrait les embeddings du token CLS pour toutes les séquences d'un DataFrame.
+    
+    L'embedding du token CLS ([CLS]) est une représentation numérique de la séquence entière,
+    capturée par le modèle Transformer. C'est cette représentation que nous allons visualiser.
+    """
+    model.eval()
+    embeddings = []
+    
+    # Créer un DataLoader pour extraire les embeddings
+    class EmbeddingDataset(Dataset):
+        def __init__(self, dataframe, tokenizer, context_col):
+            self.df = dataframe
+            self.tokenizer = tokenizer
+            self.context_col = context_col
+        def __len__(self):
+            return len(self.df)
+        def __getitem__(self, idx):
+            row = self.df.iloc[idx]
+            sequence = row[self.context_col].replace('U', 'T')
+            encoding = self.tokenizer(sequence, truncation=True, padding='longest', return_tensors='pt')
+            return {
+                "input_ids": encoding['input_ids'].flatten(),
+                "attention_mask": encoding['attention_mask'].flatten(),
+                "drug_id": torch.tensor(row['drug_id'], dtype=torch.long),
+            }
+
+    embedding_dataset = EmbeddingDataset(dataframe, tokenizer, context_col)
+    embedding_loader = DataLoader(embedding_dataset, batch_size=batch_size, collate_fn=default_data_collator, shuffle=False)
+
+    with torch.no_grad():
+        for batch in tqdm(embedding_loader, desc="Extraction des embeddings de séquence"):
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            drug_id = batch['drug_id'].to(device)
+            
+            # Le forward du modèle doit retourner les embeddings CLS
+            _, cls_embeddings = model(input_ids=input_ids, attention_mask=attention_mask, drug_id=drug_id, output_hidden_states=True)
+            embeddings.append(cls_embeddings.cpu().numpy())
+            
+    return np.vstack(embeddings)
+
+# --- Étape 1: Échantillonnage des données ---
+# L'extraction des embeddings et surtout l'algorithme UMAP sont coûteux en calculs.
+# Pour obtenir une visualisation rapide et lisible, nous travaillons sur un sous-ensemble
+# représentatif des données du jeu de test.
+# 5000 points est un bon compromis : assez pour voir les structures globales sans
+# surcharger le graphique ou ralentir excessivement l'analyse.
+# La graine (random_state=SEED) assure que nous obtenons toujours le même échantillon,
+# rendant l'analyse reproductible.
+sample_df_for_umap = test_df.sample(n=min(5000, len(test_df)), random_state=SEED).copy().reset_index(drop=True)
+
+# --- Étape 2: Extraction des Embeddings de Séquence ---
+# Nous utilisons le modèle pour convertir chaque séquence de l'échantillon en un vecteur
+# numérique de haute dimension (l'embedding). C'est l'interprétation de la séquence par le modèle.
+print(f"Extraction des embeddings pour {len(sample_df_for_umap)} séquences pour UMAP...")
+sequence_embeddings = get_sequence_embeddings(sample_df_for_umap, tokenizer, model, DEVICE, context_col)
+
+# --- Étape 3: Réduction de Dimensionnalité avec UMAP ---
+# Les embeddings ont une dimension élevée (souvent > 768). Pour les visualiser sur un
+# graphique 2D, nous utilisons UMAP (Uniform Manifold Approximation and Projection).
+# UMAP est un algorithme qui réduit la dimensionnalité tout en essayant de préserver
+# au mieux la structure globale et les relations de voisinage des données originales.
+# En d'autres termes, des points proches dans l'espace de haute dimension le resteront en 2D.
+print("Application de UMAP pour la réduction de dimensionnalité...")
+umap_reducer = UMAP(n_components=2, random_state=SEED)
+reduced_embeddings = umap_reducer.fit_transform(sequence_embeddings)
+
+sample_df_for_umap['umap_x'] = reduced_embeddings[:, 0]
+sample_df_for_umap['umap_y'] = reduced_embeddings[:, 1]
+
+# --- Étape 4: Visualisation et Interprétation ---
+# Nous créons plusieurs graphiques UMAP en colorant les points selon différentes
+# caractéristiques. Cela nous aide à comprendre comment le modèle organise
+# l'information dans son espace latent.
+print("Génération des graphiques UMAP...")
+
+# Plot 1: Coloration par valeur réelle de RT
+# Objectif : Voir si l'organisation spatiale des embeddings est corrélée à la cible de prédiction.
+# Interprétation attendue : On espère voir un gradient de couleur, indiquant que le modèle
+# place les séquences à faible et haute efficacité de readthrough dans des régions distinctes.
+plt.figure(figsize=(12, 10))
+sns.scatterplot(
+    data=sample_df_for_umap,
+    x='umap_x',
+    y='umap_y',
+    hue='RT', # Colorer par la valeur réelle de RT
+    palette='viridis',
+    s=10,
+    alpha=0.7
+)
+plt.title('UMAP des Embeddings de Séquence (Coloré par RT Réel)', fontsize=18)
+plt.xlabel('UMAP Dimension 1', fontsize=14)
+plt.ylabel('UMAP Dimension 2', fontsize=14)
+plt.legend(title='RT Réel', fontsize=10, title_fontsize=12)
+plt.tight_layout()
+plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_rt.png"), dpi=300)
+plt.close()
+print("UMAP par RT sauvegardé.")
+
+# Plot 2: Coloration par type de codon stop
+# Objectif : Vérifier si le modèle a appris de manière non-supervisée des caractéristiques
+# biologiques fondamentales et évidentes des séquences.
+# Interprétation attendue : Des clusters très nets et séparés pour chaque type de codon stop (UAA, UAG, UGA)
+# seraient une preuve éclatante que le modèle a capturé cette information essentielle.
+if 'stop_type' in sample_df_for_umap.columns:
+    plt.figure(figsize=(12, 10))
+    sns.scatterplot(
+        data=sample_df_for_umap,
+        x='umap_x',
+        y='umap_y',
+        hue='stop_type', # Colorer par type de codon stop
+        palette='tab10', # Une palette discrète pour les catégories
+        s=10,
+        alpha=0.7
+    )
+    plt.title('UMAP des Embeddings de Séquence (Coloré par Type de Codon Stop)', fontsize=18)
+    plt.xlabel('UMAP Dimension 1', fontsize=14)
+    plt.ylabel('UMAP Dimension 2', fontsize=14)
+    plt.legend(title='Type de Codon Stop', fontsize=10, title_fontsize=12)
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_stop_type.png"), dpi=300)
+    plt.close()
+    print("UMAP par type de codon stop sauvegardé.")
+else:
+    print("La colonne 'stop_type' n'est pas présente dans le DataFrame pour la visualisation UMAP.")
+
+# Plot 3: Coloration par médicament
+# Objectif : Comprendre si l'embedding de la séquence est universel ou spécifique à un médicament.
+# Interprétation attendue : Un mélange des couleurs (médicaments) est un bon signe.
+# Cela signifierait que le modèle apprend une représentation générale de la séquence (sa "lisibilité"),
+# indépendamment du médicament, qui est ensuite combinée à l'embedding du médicament dans
+# la tête de régression pour la prédiction finale.
+plt.figure(figsize=(12, 10))
+sns.scatterplot(
+    data=sample_df_for_umap,
+    x='umap_x',
+    y='umap_y',
+    hue='drug', # Colorer par médicament
+    palette='Spectral', # Une palette avec plus de couleurs pour les drogues
+    s=10,
+    alpha=0.7
+)
+plt.title('UMAP des Embeddings de Séquence (Coloré par Médicament)', fontsize=18)
+plt.xlabel('UMAP Dimension 1', fontsize=14)
+plt.ylabel('UMAP Dimension 2', fontsize=14)
+plt.legend(title='Médicament', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., fontsize=10, title_fontsize=12)
+plt.tight_layout()
+plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_drug.png"), dpi=300)
+plt.close()
+print("UMAP par médicament sauvegardé.")
 
 print("--- FIN DU PROJET ---")
