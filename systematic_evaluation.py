@@ -4,7 +4,6 @@
 #SBATCH -N 1
 #SBATCH -x hpc-n932
 #SBATCH --gres=gpu:2
-#SBATCH --time=10:00:00
 #SBATCH --constraint="gpuh100|gpua100|gpul40s|gpua40|gpurtx6000"
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=nicolas.haas3@etu.unistra.fr

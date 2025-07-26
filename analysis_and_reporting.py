@@ -380,165 +380,8 @@ plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "r2_comparison_barplot.png"), dpi=300)
 plt.close()
 print("Graphique de comparaison des R² sauvegardé.")
-
-
-# --- SECTION 3.1: Analyse des Représentations Apprises des Médicaments ---
-print("\n--- 3.1. Analyse des Embeddings de Médicaments avec Clustering Hiérarchique ---")
-
-from scipy.cluster.hierarchy import linkage, dendrogram
-from sklearn.manifold import TSNE # t-SNE est souvent meilleur pour visualiser les clusters
-
-drug_embeddings = model.drug_embedding.weight.data.cpu().numpy()
-
-# 1. Utiliser t-SNE pour une meilleure séparation des clusters
-tsne = TSNE(n_components=2, perplexity=min(NUM_DRUGS - 2, 5), random_state=SEED, n_iter=1000)
-projected_embeddings = tsne.fit_transform(drug_embeddings)
-
-# 2. Effectuer un clustering hiérarchique sur les embeddings originaux
-Z = linkage(drug_embeddings, method='ward')
-
-# 3. Créer la visualisation combinée
-fig = plt.figure(figsize=(18, 10))
-gs = fig.add_gridspec(1, 2, width_ratios=[1, 3]) # Une colonne pour le dendrogramme, une pour le scatter plot
-
-# Dendrogramme sur la gauche
-ax_dendro = fig.add_subplot(gs[0, 0])
-dendrogram(Z, labels=list(id_to_drug.values()), orientation='left', leaf_font_size=14, ax=ax_dendro)
-ax_dendro.set_title("Similarité des Mécanismes Appris", fontsize=16)
-ax_dendro.spines['top'].set_visible(False)
-ax_dendro.spines['right'].set_visible(False)
-ax_dendro.spines['bottom'].set_visible(False)
-ax_dendro.spines['left'].set_visible(False)
-
-# Scatter plot t-SNE sur la droite
-ax_scatter = fig.add_subplot(gs[0, 1])
-scatter = ax_scatter.scatter(projected_embeddings[:, 0], projected_embeddings[:, 1], 
-                             s=500, c=np.arange(NUM_DRUGS), cmap='viridis', alpha=0.9)
-for i, drug_name in id_to_drug.items():
-    ax_scatter.text(projected_embeddings[i, 0] * 1.05, projected_embeddings[i, 1], drug_name, 
-                    fontsize=16, fontweight='bold', ha='left', va='center')
-
-ax_scatter.set_title("Projection t-SNE des Embeddings de Médicaments", fontsize=18)
-ax_scatter.set_xlabel("Dimension t-SNE 1", fontsize=14)
-ax_scatter.set_ylabel("Dimension t-SNE 2", fontsize=14)
-ax_scatter.grid(True, linestyle='--', alpha=0.6)
-
-plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "drug_embeddings_tsne_clustered.png"), dpi=300)
-plt.close()
-print("Graphique t-SNE et dendrogramme des embeddings sauvegardé.")
-
-# --- NOUVELLE SECTION 3.2: ANALYSE DE LA SPÉCIFICITÉ DES MÉDICAMENTS (Volcano Plot) ---
-print("\n--- 3.2. Analyse de la Spécificité des Médicaments ---")
-
-# Comparons deux drogues intéressantes, par exemple DAP (UGA-spécifique) et Clitocine (UAA-spécifique)
-drug1_name = 'DAP'
-drug2_name = 'Clitocine'
-
-# Assurez-vous d'avoir des prédictions pour ces deux drogues
-if drug1_name in test_df['drug'].unique() and drug2_name in test_df['drug'].unique():
-    # Pivoter le DataFrame pour avoir une colonne par drogue
-    preds_pivot = test_df.pivot_table(index=context_col, columns='drug', values='preds')
-
-    # Garder uniquement les séquences testées avec les deux drogues
-    preds_pivot.dropna(subset=[drug1_name, drug2_name], inplace=True)
     
-    # Calculer la différence de performance (log-ratio pour la symétrie)
-    preds_pivot['log2_fold_change'] = np.log2(preds_pivot[drug1_name] / preds_pivot[drug2_name])
-    
-    # Calculer la performance moyenne (pour l'axe Y)
-    preds_pivot['mean_performance'] = preds_pivot[[drug1_name, drug2_name]].mean(axis=1)
 
-    # Créer le Volcano Plot
-    plt.figure(figsize=(12, 10))
-    sns.scatterplot(
-        data=preds_pivot,
-        x='log2_fold_change',
-        y='mean_performance',
-        alpha=0.5
-    )
-    
-    # Mettre en évidence les séquences les plus spécifiques
-    top_specific_d1 = preds_pivot.nlargest(5, 'log2_fold_change')
-    top_specific_d2 = preds_pivot.nsmallest(5, 'log2_fold_change')
-    
-    for idx, row in top_specific_d1.iterrows():
-        plt.text(row['log2_fold_change'], row['mean_performance'], idx[:10]+"...", color='red', fontsize=10)
-    for idx, row in top_specific_d2.iterrows():
-        plt.text(row['log2_fold_change'], row['mean_performance'], idx[:10]+"...", color='blue', fontsize=10)
-
-    plt.axvline(0, color='grey', linestyle='--')
-    plt.title(f'Analyse Différentielle : {drug1_name} vs. {drug2_name}', fontsize=18)
-    plt.xlabel(f'Log2 ( Performance {drug1_name} / Performance {drug2_name} )', fontsize=14)
-    plt.ylabel('Performance Moyenne Prédite', fontsize=14)
-    plt.grid(True, linestyle='--')
-    
-    plt.text(0.1, plt.ylim()[1]*0.9, f'Séquences préférées par {drug1_name} ->', 
-             ha='left', va='center', fontsize=12, color='red', weight='bold')
-    plt.text(-0.1, plt.ylim()[1]*0.9, f'<- Séquences préférées par {drug2_name}', 
-             ha='right', va='center', fontsize=12, color='blue', weight='bold')
-    
-    plt.savefig(os.path.join(RESULTS_DIR, "differential_volcano_plot.png"), dpi=300)
-    plt.close()
-    print("Volcano plot différentiel sauvegardé.")
-else:
-    print("Drogues pour l'analyse différentielle non trouvées. Étape ignorée.")
-
-# --- SECTION 3.3: Visualisation de l'Importance Dynamique via l'Attention ---
-# print("\n--- 3.3. Visualisation des Poids d'Attention ---")
-# if len(test_df) > 20:
-#     sample1 = test_df.iloc[10]
-#     sample2_base = test_df.iloc[20] # Utiliser un autre échantillon pour plus de diversité
-#     seq1 = sample1[context_col]
-    
-#     # Créer une mutation dans la séquence 2 pour la comparaison
-#     seq2_list = list(sample2_base[context_col])
-#     mutation_pos = len(seq2_list) // 2 - 2
-#     original_nuc = seq2_list[mutation_pos]
-#     new_nuc = 'G' if original_nuc != 'G' else 'A'
-#     seq2_list[mutation_pos] = new_nuc
-#     seq2 = "".join(seq2_list)
-    
-#     drug_id1 = sample1['drug_id']
-#     drug_id2 = sample2_base['drug_id']
-
-#     def get_attention_map(sequence_str, drug_id_int):
-#         sequence = sequence_str.replace('U', 'T')
-#         encoding = tokenizer(sequence, return_tensors='pt')
-#         batch = {k: v.to(DEVICE) for k, v in encoding.items()}
-#         batch['drug_id'] = torch.tensor([drug_id_int], dtype=torch.long).to(DEVICE)
-#         with torch.no_grad():
-#             _, attentions = model(**batch, output_attentions=True)
-#         # Moyenne des têtes d'attention pour une couche spécifique (ex: couche 6)
-#         attention_layer = attentions[6] # Choisir une couche pertinente
-#         cls_attention = attention_layer[0, :, 0, :].mean(dim=0).cpu().numpy()
-#         tokens = tokenizer.convert_ids_to_tokens(encoding['input_ids'][0])
-#         return cls_attention, tokens
-
-#     try:
-#         att1, tokens1 = get_attention_map(seq1, drug_id1)
-#         att2, tokens2 = get_attention_map(seq2, drug_id2)
-#         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 6))
-        
-#         pred_rt1 = predict_rt(seq1, drug_id1)
-#         pred_rt2 = predict_rt(seq2, drug_id2)
-        
-#         sns.heatmap([att1], xticklabels=tokens1, yticklabels=False, cmap="viridis", ax=ax1, cbar=False)
-#         ax1.set_title(f"Attention Map for Sample 1 (Drug: {id_to_drug[drug_id1]}, Pred RT: {pred_rt1:.3f})")
-        
-#         sns.heatmap([att2], xticklabels=tokens2, yticklabels=False, cmap="viridis", ax=ax2, cbar=False)
-#         ax2.set_title(f"Attention Map for Mutated Sample 2 (Drug: {id_to_drug[drug_id2]}, Pred RT: {pred_rt2:.3f})")
-        
-#         plt.tight_layout()
-#         plt.savefig(os.path.join(RESULTS_DIR, "attention_map_comparison.png"), dpi=300)
-#         plt.close()
-#         print("Graphique de comparaison des cartes d'attention sauvegardé.")
-#     except Exception as e:
-#         print(f"Erreur lors de la génération des cartes d'attention : {e}. Cette étape est ignorée.")
-# else:
-#     print("Pas assez de données dans le jeu de test pour la visualisation de l'attention. Étape ignorée.")
-    
-    
 print("\n--- 4.0. Génération des Logos de Séquence ---")
 
 def generate_sequence_logos_for_drug(drug_name, drug_df, context_col, n_seqs=100):
@@ -675,6 +518,198 @@ else:
         print("Cette étape est ignorée.")
 
 
+# --- SECTION 4.0: PRÉPARATION ET FONCTION UTILITAIRE ---
+print("\n--- 4.0. Préparation pour l'Analyse d'Interprétabilité ---")
 
-print("\n--- Analyse terminée. Tous les artefacts sont dans le répertoire 'results/' ---")
+def predict_batch(sequences, drug_ids, tokenizer, model, device):
+    """
+    Fonction utilitaire pour prédire un batch de séquences pour des drogues données.
+    Prend une liste de séquences et une liste d'IDs de drogues correspondants.
+    """
+    # Gérer le cas de listes vides pour éviter les erreurs
+    if not sequences:
+        return np.array([])
+        
+    inputs = tokenizer(sequences, return_tensors='pt', padding=True, truncation=True)
+    batch = {k: v.to(device) for k, v in inputs.items()}
+    batch['drug_id'] = torch.tensor(drug_ids, dtype=torch.long).to(device)
+    
+    with torch.no_grad():
+        preds_transformed = model(**batch)
+        
+    return np.expm1(preds_transformed.cpu().numpy())
+
+# --- SECTION 4.1: SIMILARITÉ FONCTIONNELLE DES PROFILS DE PRÉDICTION ---
+print("\n--- 4.1. Analyse de la Similarité des Profils de Prédiction des Médicaments ---")
+
+# 1. Utiliser un ensemble commun de séquences pour la comparaison
+unique_sequences = test_df[context_col].unique().tolist()
+print(f"Génération de prédictions in-silico pour {len(unique_sequences)} séquences uniques sur toutes les drogues...")
+
+# 2. Générer les prédictions pour chaque drogue sur cet ensemble commun
+all_drug_preds = {}
+for drug_name, drug_id in tqdm(drug_to_id.items(), desc="Profilage des drogues"):
+    drug_ids_batch = [drug_id] * len(unique_sequences)
+    preds = predict_batch(unique_sequences, drug_ids_batch, tokenizer, model, DEVICE)
+    all_drug_preds[drug_name] = preds
+
+# 3. Créer le DataFrame dense et calculer la matrice de corrélation
+drug_profiles_df = pd.DataFrame(all_drug_preds, index=unique_sequences)
+drug_similarity_matrix = drug_profiles_df.corr(method='pearson')
+
+# 4. Visualiser avec un clustermap
+print("Génération du clustermap de similarité...")
+try:
+    cluster_map = sns.clustermap(
+        drug_similarity_matrix,
+        annot=True,
+        fmt=".2f",
+        cmap='viridis',
+        linewidths=.5,
+        vmin=0, vmax=1
+    )
+    plt.setp(cluster_map.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+    plt.setp(cluster_map.ax_heatmap.get_yticklabels(), rotation=0)
+    cluster_map.fig.suptitle('Similarité Fonctionnelle des Profils de Réponse', fontsize=20, y=1.02)
+    plt.savefig(os.path.join(RESULTS_DIR, "drug_similarity_clustermap.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+    print("Clustermap de similarité des drogues sauvegardé.")
+except Exception as e:
+    print(f"Erreur lors de la génération du clustermap : {e}. Étape ignorée.")
+
+
+# --- SECTION 5.0 (Révision 3): PROFIL D'IMPORTANCE DES NUCLÉOTIDES AVEC SHAP ---
+print("\n--- 5.0. Profil d'Importance des Nucléotides avec KernelExplainer (Alternative) ---")
+
+try:
+    import shap
+    print(f"Version de SHAP installée : {shap.__version__}")
+
+    # --- Étape 1: Préparer les données et la fonction de prédiction ---
+    # On va travailler sur un échantillon et utiliser ses indices comme "features" pour SHAP
+    sample_size = min(100, len(test_df))
+    if sample_size == 0:
+        raise ValueError("Le jeu de test est vide, impossible de créer un échantillon.")
+    
+    shap_sample_df = test_df.sample(n=sample_size, random_state=SEED).reset_index(drop=True)
+
+    # La fonction de prédiction pour KernelExplainer
+    # Elle prend un tableau (n_samples, n_features). Ici n_features=1 (l'indice de la séquence)
+    def kernel_predictor(indices_array):
+        # indices_array sera de la forme [[0], [1], [2], ...]
+        indices = indices_array.flatten().astype(int)
+        
+        # Aller chercher les séquences et les drug_ids correspondants dans notre échantillon
+        sequences_to_predict = shap_sample_df.loc[indices, context_col].tolist()
+        drug_ids_to_predict = shap_sample_df.loc[indices, 'drug_id'].tolist()
+        
+        # Prédire avec notre fonction utilitaire
+        # On doit retourner une seule sortie à la fois, donc on fait une boucle par drogue
+        # C'est un peu moins efficace mais nécessaire pour cette approche.
+        drug_id_of_interest = shap.drug_id_to_explain # Variable globale temporaire
+        
+        # Filtre pour ne prédire que pour la drogue d'intérêt
+        preds = predict_batch(sequences_to_predict, [drug_id_of_interest] * len(sequences_to_predict), tokenizer, model, DEVICE)
+        return preds
+
+    # --- Étape 2: Boucler sur chaque drogue pour créer un explainer et calculer l'importance ---
+    all_shap_values = []
+    
+    # On crée une "donnée de fond" (background data) pour que SHAP ait une référence.
+    # On prend un petit sous-échantillon.
+    background_data = np.arange(min(10, sample_size)).reshape(-1, 1)
+
+    for drug_name, drug_id in tqdm(drug_to_id.items(), desc="Calcul des valeurs SHAP par drogue"):
+        # Indiquer à la fonction predictor pour quelle drogue elle doit travailler
+        shap.drug_id_to_explain = drug_id
+        
+        # Créer l'explainer
+        explainer = shap.KernelExplainer(kernel_predictor, background_data)
+        
+        # Expliquer toutes les instances de notre échantillon
+        indices_to_explain = np.arange(len(shap_sample_df)).reshape(-1, 1)
+        
+        # nsamples='auto' est un bon compromis vitesse/précision
+        shap_values_for_drug = explainer.shap_values(indices_to_explain, nsamples='auto')
+        
+        # Stocker les résultats
+        all_shap_values.append(pd.DataFrame({
+            'shap_value': shap_values_for_drug,
+            'drug': drug_name,
+            'sequence': shap_sample_df[context_col]
+        }))
+
+    shap_df = pd.concat(all_shap_values, ignore_index=True)
+    
+    # --- Étape 3: Utiliser une autre méthode pour l'importance positionnelle : "Leave-One-Out" ---
+    # Puisque SHAP sur le texte est complexe, revenons à une ablation robuste.
+    # On va calculer l'importance comme la différence de SHAP value quand on enlève un nucléotide.
+    # C'est trop complexe. On va simplifier et revenir à l'ablation R2 qui est plus directe.
+    
+    # ---- Ré-implémentation de l'ablation R2, qui est plus directe et robuste que SHAP pour ce cas d'usage ----
+    print("\nChangement de stratégie : SHAP sur texte est trop complexe/instable. Retour à l'ablation robuste.")
+    
+    context_num_str = ''.join(filter(str.isdigit, context_col))
+    n_context = int(context_num_str) // 2
+    seq_len = 2 * n_context + 3
+    positions_to_ablate = range(seq_len)
+    importance_results = []
+
+    for drug_name, drug_id in tqdm(drug_to_id.items(), desc="Analyse d'ablation R2 par drogue"):
+        drug_df = test_df[test_df['drug'] == drug_name]
+        if len(drug_df) < 50: continue
+        
+        sample_df = drug_df.sample(n=min(500, len(drug_df)), random_state=SEED)
+        base_sequences = sample_df[context_col].tolist()
+        true_values = sample_df['RT'].values
+        drug_ids_batch = [drug_id] * len(base_sequences)
+        
+        base_preds = predict_batch(base_sequences, drug_ids_batch, tokenizer, model, DEVICE)
+        r2_base = r2_score(true_values, base_preds)
+        
+        for pos_idx in positions_to_ablate:
+            ablated_sequences = ["".join(list(s[:pos_idx]) + ['N'] + list(s[pos_idx+1:])) for s in base_sequences]
+            ablated_preds = predict_batch(ablated_sequences, drug_ids_batch, tokenizer, model, DEVICE)
+            r2_ablated = r2_score(true_values, ablated_preds)
+            importance_drop = r2_base - r2_ablated
+            
+            relative_pos = pos_idx - n_context
+            importance_results.append({
+                'drug': drug_name,
+                'position': relative_pos,
+                'Importance (R2 Drop)': importance_drop
+            })
+
+    importance_df = pd.DataFrame(importance_results)
+    heatmap_pivot = importance_df.pivot_table(index='drug', columns='position', values='Importance (R2 Drop)')
+    viz_cols = [c for c in sorted(heatmap_pivot.columns) if -9 <= c < 12]
+    heatmap_pivot = heatmap_pivot[viz_cols]
+    heatmap_pivot_normalized = heatmap_pivot.apply(lambda x: (x - x.min()) / (x.max() - x.min()) if (x.max() - x.min()) > 0 else x, axis=1)
+
+    plt.figure(figsize=(20, 8))
+    sns.heatmap(heatmap_pivot_normalized, cmap='rocket_r', linewidths=.5, annot=True, fmt=".2f",
+                cbar_kws={'label': 'Importance Relative Normalisée (0=min, 1=max)'})
+    plt.title("Profil d'Importance des Nucléotides par Drogue (Ablation R²)", fontsize=20, pad=20)
+    plt.xlabel("Position Relative au Début du Codon Stop", fontsize=14)
+    plt.ylabel("Drogue", fontsize=14)
+    
+    ax = plt.gca()
+    try:
+        stop_start_tick_pos = heatmap_pivot_normalized.columns.get_loc(0)
+        ax.add_patch(plt.Rectangle((stop_start_tick_pos, 0), 3, len(heatmap_pivot_normalized),
+                                   fill=False, edgecolor='white', lw=3, clip_on=False))
+        ax.text(stop_start_tick_pos + 1.5, -0.05, 'STOP', color='white', ha='center', va='bottom',
+                weight='bold', transform=ax.get_xaxis_transform())
+    except KeyError:
+        print("Position 0 non trouvée, impossible de dessiner le rectangle du stop.")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(RESULTS_DIR, "nucleotide_importance_heatmap_R2_Ablation.png"), dpi=300)
+    plt.close()
+    print("Heatmap d'importance des nucléotides (Ablation R²) sauvegardée.")
+
+except ImportError:
+    print("La bibliothèque 'shap' n'est pas installée. Cette étape est ignorée.")
+except Exception as e:
+    print(f"Erreur durant l'analyse d'importance : {e}. Étape ignorée.")
 print("--- FIN DU PROJET ---")
