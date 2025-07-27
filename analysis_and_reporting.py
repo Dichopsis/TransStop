@@ -631,15 +631,13 @@ def get_sequence_embeddings(dataframe, tokenizer, model, device, context_col, ba
             
     return np.vstack(embeddings)
 
-# --- Étape 1: Échantillonnage des données ---
-# L'extraction des embeddings et surtout l'algorithme UMAP sont coûteux en calculs.
-# Pour obtenir une visualisation rapide et lisible, nous travaillons sur un sous-ensemble
-# représentatif des données du jeu de test.
-# 5000 points est un bon compromis : assez pour voir les structures globales sans
-# surcharger le graphique ou ralentir excessivement l'analyse.
-# La graine (random_state=SEED) assure que nous obtenons toujours le même échantillon,
-# rendant l'analyse reproductible.
-sample_df_for_umap = test_df.sample(n=min(5000, len(test_df)), random_state=SEED).copy().reset_index(drop=True)
+# --- Étape 1: Préparation des données pour UMAP ---
+# Pour une analyse exhaustive, nous utilisons l'intégralité du jeu de données de test.
+# Note : Cela peut être coûteux en temps de calcul et en mémoire, en particulier
+# pour l'étape UMAP. Les graphiques résultants peuvent également souffrir de
+# sur-impression ("overplotting"), rendant la visualisation plus dense.
+print("Préparation de l'intégralité du jeu de test pour l'analyse UMAP...")
+sample_df_for_umap = test_df.copy().reset_index(drop=True)
 
 # --- Étape 2: Extraction des Embeddings de Séquence ---
 # Nous utilisons le modèle pour convertir chaque séquence de l'échantillon en un vecteur
