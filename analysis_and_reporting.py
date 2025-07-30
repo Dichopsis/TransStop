@@ -740,6 +740,61 @@ plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_drug.png"), dpi=300)
 plt.close()
 print("UMAP par médicament sauvegardé.")
 
+
+# --- SECTION 6.1: VISUALISATION DE L'ESPACE D'EMBEDDING DES MÉDICAMENTS ---
+print("\n--- 6.1. Visualisation de l'Espace d'Embedding des Médicaments ---")
+
+# --- Étape 1: Extraction des Embeddings de Médicaments ---
+# Les embeddings sont les poids de la couche `drug_embedding` du modèle.
+# Chaque ligne de cette matrice de poids est le vecteur appris pour un médicament.
+print("Extraction des embeddings de médicaments depuis la couche du modèle...")
+drug_embeddings = model.drug_embedding.weight.detach().cpu().numpy()
+
+# --- Étape 2: Réduction de Dimensionnalité avec UMAP ---
+# Nous appliquons UMAP sur ces embeddings pour les projeter en 2D.
+print("Application de UMAP pour la réduction de dimensionnalité des embeddings de médicaments...")
+# Ajustement des paramètres UMAP pour un petit nombre de points (médicaments)
+# n_neighbors doit être inférieur au nombre de points.
+umap_reducer_drugs = UMAP(n_components=2, random_state=SEED, n_neighbors=min(NUM_DRUGS - 1, 15), min_dist=0.1)
+reduced_drug_embeddings = umap_reducer_drugs.fit_transform(drug_embeddings)
+
+# --- Étape 3: Création d'un DataFrame pour la Visualisation ---
+# Nous assemblons les résultats dans un DataFrame pour une manipulation facile avec Seaborn/Matplotlib.
+drug_umap_df = pd.DataFrame({
+    'umap_x': reduced_drug_embeddings[:, 0],
+    'umap_y': reduced_drug_embeddings[:, 1],
+    'drug_name': [id_to_drug[i] for i in range(NUM_DRUGS)] # Utiliser le mappage id -> nom
+})
+
+# --- Étape 4: Visualisation et Annotation ---
+# Création du nuage de points. Chaque point est un médicament.
+# Nous annotons chaque point avec son nom pour l'identification.
+print("Génération du graphique UMAP pour l'espace d'embedding des médicaments...")
+plt.figure(figsize=(14, 12))
+sns.scatterplot(
+    data=drug_umap_df,
+    x='umap_x',
+    y='umap_y',
+    s=200, # Taille des points plus grande pour la lisibilité
+    alpha=0.8,
+    edgecolor='k',
+    linewidth=1
+)
+
+# Ajout des annotations (noms des médicaments)
+for i, row in drug_umap_df.iterrows():
+    plt.text(row['umap_x'] + 0.05, row['umap_y'], row['drug_name'], fontsize=12, weight='bold')
+
+plt.title("Espace d'Embedding des Médicaments (visualisé avec UMAP)", fontsize=20, pad=20)
+plt.xlabel("UMAP Dimension 1", fontsize=16)
+plt.ylabel("UMAP Dimension 2", fontsize=16)
+plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+plt.tight_layout()
+plt.savefig(os.path.join(RESULTS_DIR, "drug_embedding_space_umap.png"), dpi=300)
+plt.close()
+print("Graphique UMAP de l'espace d'embedding des médicaments sauvegardé.")
+
+
 # --- SECTION 7.0: IN-SILICO SATURATION MUTAGENESIS ---
 print("\n--- 7.0. Analyse par Mutagénèse Saturationnelle In Silico ---")
 
