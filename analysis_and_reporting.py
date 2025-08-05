@@ -5,8 +5,10 @@
 #SBATCH -x hpc-n932
 #SBATCH --gres=gpu:2
 #SBATCH --constraint="gpuh100|gpua100|gpul40s|gpua40|gpurtx6000"
-#SBATCH --mail-type=END
+#SBATCH --mail-type=ALL
 #SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
+#SBATCH --job-name=analysis_and_reporting
+#SBATCH --output=analysis_and_reporting_%j.out
 
 import pandas as pd
 import numpy as np
@@ -851,7 +853,7 @@ def perform_saturation_mutagenesis(sequence, drug_id, model, tokenizer, device):
             
     return pd.DataFrame(mutagenesis_results)
 
-def plot_mutagenesis_heatmap(df, title, filename):
+def plot_mutagenesis_heatmap(df, title, filename, reference_sequence):
     """
     Génère et sauvegarde une heatmap à partir des résultats de la mutagénèse.
 
@@ -887,7 +889,8 @@ def plot_mutagenesis_heatmap(df, title, filename):
         linewidths=.5
     )
     heatmap.collections[0].colorbar.set_label("log2 Fold Change", rotation=270, labelpad=20)
-    plt.title(title, fontsize=16, pad=20)
+    full_title = f"{title}\nSéquence de référence: {reference_sequence}"
+    plt.title(full_title, fontsize=16, pad=20)
     plt.xlabel("Position (relative au début du codon stop)", fontsize=12)
     plt.ylabel("Mutation vers", fontsize=12)
     plt.tight_layout()
@@ -927,7 +930,7 @@ for drug_name in drugs_to_analyze:
         # 3. Générer la heatmap
         plot_title = f"Impact Mutationnel autour du codon {stop_type} pour {drug_name}"
         output_filename = os.path.join(RESULTS_DIR, f"saturation_mutagenesis_heatmap_{drug_name}_{stop_type}.png")
-        plot_mutagenesis_heatmap(mutagenesis_df, plot_title, output_filename)
+        plot_mutagenesis_heatmap(mutagenesis_df, plot_title, output_filename, reference_sequence)
 
 print("\n--- Analyse de mutagénèse terminée ---")
 
@@ -1007,7 +1010,7 @@ def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
 
     return pd.DataFrame(epistasis_results)
 
-def plot_epistasis_heatmap(df, title, filename):
+def plot_epistasis_heatmap(df, title, filename, reference_sequence):
     """
     Génère une heatmap des scores d'épistasie, en s'assurant que les axes sont
     triés numériquement par position de mutation.
@@ -1054,7 +1057,8 @@ def plot_epistasis_heatmap(df, title, filename):
         linewidths=.1
     )
     heatmap.collections[0].colorbar.set_label("Epistasis Score", rotation=270, labelpad=20)
-    plt.title(title, fontsize=20, pad=20)
+    full_title = f"{title}\nSéquence de référence: {reference_sequence}"
+    plt.title(full_title, fontsize=20, pad=20)
     plt.xlabel("Mutation", fontsize=16)
     plt.ylabel("Mutation", fontsize=16)
     
@@ -1067,33 +1071,43 @@ def plot_epistasis_heatmap(df, title, filename):
     plt.close()
     print(f"Heatmap d'épistasie sauvegardée dans '{filename}'.")
 
-# --- Logique principale de l'analyse d'épistasie (cas d'étude) ---
-print("\nLancement de l'analyse d'épistasie pour un cas d'étude...")
-epistasis_drug = 'Gentamicin'
-epistasis_stop_type = 'uga'
+# --- Logique principale de l'analyse d'épistasie (généralisée) ---
+print("\nLancement de l'analyse d'épistasie généralisée...")
 
-drug_id = drug_to_id.get(epistasis_drug)
-if drug_id is not None:
-    drug_df = test_df[test_df['drug'] == epistasis_drug]
-    reference_df = drug_df[drug_df['stop_type'] == epistasis_stop_type]
+# Définir les types de codons stop à analyser
+stop_types_to_analyze = ['uaa', 'uag', 'uga']
 
-    if not reference_df.empty:
+# Boucler sur chaque médicament et chaque type de codon stop
+for drug_name in drug_to_id.keys():
+    drug_id = drug_to_id[drug_name]
+    drug_df = test_df[test_df['drug'] == drug_name]
+    
+    for stop_type in stop_types_to_analyze:
+        # Sélectionner la séquence de référence la plus performante pour ce combo
+        reference_df = drug_df[drug_df['stop_type'] == stop_type]
+        
+        if reference_df.empty:
+            print(f"Aucune séquence trouvée pour {drug_name} avec codon stop {stop_type}. Analyse d'épistasie ignorée.")
+            continue
+        
+        # Trier par prédiction pour trouver la meilleure séquence
         reference_sequence = reference_df.loc[reference_df['preds'].idxmax()][context_col]
         
-        print(f"Analyse d'épistasie pour {epistasis_drug} sur le codon {epistasis_stop_type}...")
+        print(f"\nAnalyse d'épistasie pour {drug_name} sur le codon {stop_type}...")
         print(f"Séquence de référence : {reference_sequence}")
         
+        # Effectuer l'analyse d'épistasie
         epistasis_df = calculate_epistasis(reference_sequence, drug_id, model, tokenizer, DEVICE)
         
-        plot_title = f"Analyse d'Épistasie pour {epistasis_drug} (Stop: {epistasis_stop_type})"
-        output_filename = os.path.join(RESULTS_DIR, f"epistasis_heatmap_{epistasis_drug}.png")
-        plot_epistasis_heatmap(epistasis_df, plot_title, output_filename)
-    else:
-        print(f"Aucune séquence trouvée pour le cas d'étude : {epistasis_drug} / {epistasis_stop_type}")
-else:
-    print(f"Médicament du cas d'étude '{epistasis_drug}' non trouvé.")
+        # Générer la heatmap
+        if not epistasis_df.empty:
+            plot_title = f"Analyse d'Épistasie pour {drug_name} (Stop: {stop_type})"
+            output_filename = os.path.join(RESULTS_DIR, f"epistasis_heatmap_{drug_name}_{stop_type}.png")
+            plot_epistasis_heatmap(epistasis_df, plot_title, output_filename, reference_sequence)
+        else:
+            print(f"Le DataFrame d'épistasie est vide pour {drug_name} / {stop_type}. Aucune heatmap générée.")
 
-print("\n--- Analyse d'épistasie terminée ---")
+print("\n--- Analyse d'épistasie généralisée terminée ---")
 
 
 print("--- FIN DU PROJET ---")
