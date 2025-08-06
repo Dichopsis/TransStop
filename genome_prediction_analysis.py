@@ -94,8 +94,8 @@ sns.heatmap(
     cmap='viridis',
     linewidths=.5
 )
-plt.title('Agreement of Predicted Best Drug', fontsize=20, pad=20)
-plt.xlabel('Best Drug (Our Model)', fontsize=16)
+#plt.title('Agreement of Predicted Best Drug', fontsize=20, pad=20)
+plt.xlabel('Best Drug (TransStop)', fontsize=16)
 plt.ylabel('Best Drug (Toledano et al. Model)', fontsize=16)
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "best_drug_confusion_matrix.png"), dpi=300)
@@ -155,7 +155,7 @@ print("Generating gain distribution plot (log scale)...")
 plt.figure(figsize=(12, 7))
 sns.histplot(disagreement_df['our_gain'], bins=50, kde=False) # kde=False is often better with log scale
 plt.yscale('log')
-plt.title('Distribution of Predicted Performance Gain (Log Scale)', fontsize=16)
+#plt.title('Distribution of Predicted Performance Gain (Log Scale)', fontsize=16)
 plt.xlabel('RT Gain (Our Best Drug vs. Toledano\'s Choice)', fontsize=14)
 plt.ylabel('Number of PTCs (Log Scale)', fontsize=14)
 plt.axvline(x=0, color='red', linestyle='--')
@@ -238,7 +238,7 @@ if num_high_gain_cases > 0:
     # The rest of the visualization code remains the same and should work now
     plt.figure(figsize=(10, 7))
     barplot = sns.barplot(data=comparison_df_melted, x='Stop_Type', y='Proportion', hue='Group', palette='pastel')
-    plt.title('Stop Type Distribution: High-Impact Cases vs. Baseline', fontsize=16)
+    #plt.title('Stop Type Distribution: High-Impact Cases vs. Baseline', fontsize=16)
     plt.ylabel('Proportion of Cases', fontsize=14)
     plt.xlabel('Stop Codon Type', fontsize=14)
     plt.grid(axis='y', linestyle='--')
@@ -265,9 +265,9 @@ if num_high_gain_cases > 0:
     change_pair_counts = high_gain_df['change_pair'].value_counts().nlargest(10) # We take the 10 most frequent
     plt.figure(figsize=(12, 10))
     barplot_pairs = sns.barplot(x=change_pair_counts.values, y=change_pair_counts.index, palette='viridis_r', hue=change_pair_counts.index, dodge=False, legend=False)
-    plt.title('Top 10 High-Impact "Changes of Mind" (Gain > 1.0)', fontsize=18)
+    #plt.title('Top 10 High-Impact "Changes of Mind" (Gain > 1.0)', fontsize=18)
     plt.xlabel('Number of PTCs', fontsize=14)
-    plt.ylabel('Drug Change (Toledano -> Our Model)', fontsize=14)
+    plt.ylabel('Drug Change (Toledano -> TransStop)', fontsize=14)
     plt.grid(axis='x', linestyle='--')
     
     # Add counts on the bars
@@ -304,7 +304,7 @@ if 'stop_type' in df.columns:
         values='ptc_count',
         color='our_best_drug', # Coloring by drug makes more sense now
         color_discrete_map=drug_color_map,
-        title='Drug Specialization Profile by Stop Codon Type',
+        #title='Drug Specialization Profile by Stop Codon Type',
     )
 
     fig.update_layout(margin=dict(t=50, l=25, r=25, b=25), font_size=16, title_font_size=22)
@@ -405,7 +405,7 @@ ax.set_xticklabels(labels=original_ticks)
 ax.set_xlabel("Predicted Readthrough (RT) - Log-transformed Scale", fontsize=16)
 ax.set_ylabel("") # No need for a "Drug" label here
 
-ax.set_title("Drug Performance Profile (Raincloud Plot)", fontsize=22, pad=20)
+#ax.set_title("Drug Performance Profile (Raincloud Plot)", fontsize=22, pad=20)
 ax.tick_params(axis='x', which='major', labelsize=14)
 ax.grid(True, axis='x', linestyle='--', alpha=0.6)
 
@@ -490,7 +490,7 @@ else:
                 ax.tick_params(axis='y', labelsize=12)
 
         fig.text(0.5, 0.04, 'Stop Codon Type', ha='center', va='center', fontsize=16)
-        fig.suptitle("Predicted Therapeutic Profile for Key CFTR Mutations", fontsize=22, y=0.98)
+        #fig.suptitle("Predicted Therapeutic Profile for Key CFTR Mutations", fontsize=22, y=0.98)
         fig.tight_layout(rect=[0, 0.05, 1, 0.95])
 
         plt.savefig(os.path.join(RESULTS_DIR, "cftr_therapeutic_profiles_heatmap.png"), dpi=300)
