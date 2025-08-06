@@ -217,7 +217,7 @@ plt.title('Distribution du Gain de Performance Prédit (Échelle Log)', fontsize
 plt.xlabel('Gain de RT (Notre Meilleure Drogue vs. Choix de Toledano)', fontsize=14)
 plt.ylabel('Nombre de PTCs (Échelle Log)', fontsize=14)
 plt.axvline(x=0, color='red', linestyle='--')
-plt.grid(True, which='both', linestyle='--')
+plt.grid(True, which='major', linestyle='--')
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "disagreement_gain_distribution_log.png"), dpi=300)
 plt.close()
