@@ -41,7 +41,7 @@ try:
     with open(os.path.join(RESULTS_DIR, "best_hyperparams.json"), 'r') as f:
         best_hyperparams = json.load(f)
     best_config_df = pd.read_csv(os.path.join(RESULTS_DIR, "systematic_evaluation_log.csv"))
-    best_config = best_config_df.iloc.to_dict()
+    best_config = best_config_df.iloc[0].to_dict()
     test_df_original = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, "test_df.csv"))
 except FileNotFoundError as e:
     print(f"File loading error: {e}")
@@ -238,7 +238,7 @@ max_val += (max_val - min_val) * 0.05
 plt.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect Prediction (y=x)')
 
 # 4. Add titles, labels, and grid
-plt.title('Predictions vs. Actual Values on the Test Set', fontsize=20, pad=20)
+#plt.title('Predictions vs. Actual Values on the Test Set', fontsize=20, pad=20)
 plt.xlabel('Actual Readthrough Value (RT)', fontsize=16)
 plt.ylabel('Predicted Readthrough Value (RT)', fontsize=16)
 plt.grid(True, which='both', linestyle='--', linewidth=0.5)
@@ -337,7 +337,7 @@ for j in range(num_drugs, len(axes)):
     axes[j].set_visible(False)
 
 # 4. Add a main title to the figure
-fig.suptitle('Predictions vs. Actual Values by Drug', fontsize=22, y=1.02)
+#fig.suptitle('Predictions vs. Actual Values by Drug', fontsize=22, y=1.02)
 
 # 5. Adjust the layout and save
 fig.tight_layout(rect=[0, 0.03, 1, 0.98]) # rect leaves space for the suptitle
@@ -378,7 +378,7 @@ barplot = sns.barplot(
     dodge=True
 )
 
-plt.title('Model Performance Comparison (R²)', fontsize=20, pad=20)
+#plt.title('Model Performance Comparison (R²)', fontsize=20, pad=20)
 plt.xlabel('R² Score', fontsize=16)
 plt.ylabel('Drug / Condition', fontsize=16)
 plt.xlim(0, 1.05)
@@ -490,7 +490,7 @@ try:
     )
     plt.setp(cluster_map.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
     plt.setp(cluster_map.ax_heatmap.get_yticklabels(), rotation=0)
-    cluster_map.fig.suptitle('Functional Similarity of Response Profiles', fontsize=20, y=1.02)
+    #cluster_map.fig.suptitle('Functional Similarity of Response Profiles', fontsize=20, y=1.02)
     plt.savefig(os.path.join(RESULTS_DIR, "drug_similarity_clustermap.png"), dpi=300, bbox_inches='tight')
     plt.close()
     print("Drug similarity clustermap saved.")
@@ -590,7 +590,7 @@ sns.scatterplot(
     s=10,
     alpha=0.7
 )
-plt.title('UMAP of Sequence Embeddings (Colored by Actual RT)', fontsize=18)
+#plt.title('UMAP of Sequence Embeddings (Colored by Actual RT)', fontsize=18)
 plt.xlabel('UMAP Dimension 1', fontsize=14)
 plt.ylabel('UMAP Dimension 2', fontsize=14)
 plt.legend(title='Actual RT', fontsize=10, title_fontsize=12)
@@ -615,7 +615,7 @@ if 'stop_type' in sample_df_for_umap.columns:
         s=10,
         alpha=0.7
     )
-    plt.title('UMAP of Sequence Embeddings (Colored by Stop Codon Type)', fontsize=18)
+    #plt.title('UMAP of Sequence Embeddings (Colored by Stop Codon Type)', fontsize=18)
     plt.xlabel('UMAP Dimension 1', fontsize=14)
     plt.ylabel('UMAP Dimension 2', fontsize=14)
     plt.legend(title='Stop Codon Type', fontsize=10, title_fontsize=12)
@@ -642,7 +642,7 @@ sns.scatterplot(
     s=10,
     alpha=0.7
 )
-plt.title('UMAP of Sequence Embeddings (Colored by Drug)', fontsize=18)
+#plt.title('UMAP of Sequence Embeddings (Colored by Drug)', fontsize=18)
 plt.xlabel('UMAP Dimension 1', fontsize=14)
 plt.ylabel('UMAP Dimension 2', fontsize=14)
 plt.legend(title='Drug', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., fontsize=10, title_fontsize=12)
@@ -698,7 +698,7 @@ sns.scatterplot(
 for i, row in drug_umap_df.iterrows():
     plt.text(row['umap_x'] + 0.05, row['umap_y'], row['drug_name'], fontsize=12, weight='bold')
 
-plt.title("Drug Embedding Space (visualized with UMAP)", fontsize=20, pad=20)
+#plt.title("Drug Embedding Space (visualized with UMAP)", fontsize=20, pad=20)
 plt.xlabel("UMAP Dimension 1", fontsize=16)
 plt.ylabel("UMAP Dimension 2", fontsize=16)
 plt.grid(True, which='both', linestyle='--', linewidth=0.5)
@@ -720,7 +720,7 @@ def perform_saturation_mutagenesis(sequence, drug_id, model, tokenizer, device):
     mutagenesis_results = []
 
     # 1. Get the prediction for the reference sequence (wild-type)
-    wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)
+    wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)[0]
     
     # Handle the case where the base prediction is zero to avoid division by zero
     if wt_pred == 0:
@@ -750,7 +750,7 @@ def perform_saturation_mutagenesis(sequence, drug_id, model, tokenizer, device):
                 mutated_sequence = "".join(mutated_sequence)
                 
                 # Get the prediction for the mutated sequence
-                mutant_pred = predict_batch([mutated_sequence], [drug_id], tokenizer, model, device)
+                mutant_pred = predict_batch([mutated_sequence], [drug_id], tokenizer, model, device)[0]
                 
                 # Calculate the log2 fold change
                 log2_fold_change = np.log2(mutant_pred / wt_pred)
@@ -799,8 +799,8 @@ def plot_mutagenesis_heatmap(df, title, filename, reference_sequence):
         fmt=".2f",
         linewidths=.5
     )
-    heatmap.collections.colorbar.set_label("log2 Fold Change", rotation=270, labelpad=20)
-    full_title = f"{title}\nReference sequence: {reference_sequence}"
+    heatmap.collections[0].colorbar.set_label("log2 Fold Change", rotation=270, labelpad=20)
+    full_title = f"Reference sequence: {reference_sequence}"
     plt.title(full_title, fontsize=16, pad=20)
     plt.xlabel("Position (relative to the start of the stop codon)", fontsize=12)
     plt.ylabel("Mutation to", fontsize=12)
@@ -811,7 +811,7 @@ def plot_mutagenesis_heatmap(df, title, filename, reference_sequence):
 
 # --- Main analysis logic ---
 # Define the drugs and stop codon types to analyze
-drugs_to_analyze = ['Gentamicin', 'G418', 'DAP']
+drugs_to_analyze = ["FUr", "Gentamicin", "CC90009", "G418", "Clitocine", "DAP", "SJ6986", "SRI", "Untreated"]
 stop_types_to_analyze = ['uga', 'uag', 'uaa']
 
 for drug_name in drugs_to_analyze:
@@ -855,7 +855,7 @@ def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
     nucleotides = ['A', 'C', 'G', 'T']
     
     # 1. Calculate the base prediction (WT)
-    wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)
+    wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)[0]
     if wt_pred == 0: wt_pred = 1e-9
     log_wt_pred = np.log2(wt_pred)
 
@@ -873,7 +873,7 @@ def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
             
             mut_seq = list(sequence)
             mut_seq[pos] = new_nuc
-            mut_pred = predict_batch(["".join(mut_seq)], [drug_id], tokenizer, model, device)
+            mut_pred = predict_batch(["".join(mut_seq)], [drug_id], tokenizer, model, device)[0]
             if mut_pred == 0: mut_pred = 1e-9
             
             effect = np.log2(mut_pred) - log_wt_pred
@@ -899,7 +899,7 @@ def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
                 double_mut_seq[pos1] = new_nuc1
                 double_mut_seq[pos2] = new_nuc2
                 
-                double_mut_pred = predict_batch(["".join(double_mut_seq)], [drug_id], tokenizer, model, device)
+                double_mut_pred = predict_batch(["".join(double_mut_seq)], [drug_id], tokenizer, model, device)[0]
                 if double_mut_pred == 0: double_mut_pred = 1e-9
                 
                 # Observed effect of the double mutant
@@ -935,7 +935,7 @@ def plot_epistasis_heatmap(df, title, filename, reference_sequence):
     def get_pos_from_label(label):
         try:
             # Extracts the part before the ':' and converts it to an integer.
-            return int(label.split(':'))
+            return int(label.split(':')[0])
         except (ValueError, IndexError):
             # Returns a large value for malformed labels to sort them at the end.
             return float('inf')
@@ -967,8 +967,8 @@ def plot_epistasis_heatmap(df, title, filename, reference_sequence):
         square=True, # Ensure cells are square for better readability.
         linewidths=.1
     )
-    heatmap.collections.colorbar.set_label("Epistasis Score", rotation=270, labelpad=20)
-    full_title = f"{title}\nReference sequence: {reference_sequence}"
+    heatmap.collections[0].colorbar.set_label("Epistasis Score", rotation=270, labelpad=20)
+    full_title = f"Reference sequence: {reference_sequence}"
     plt.title(full_title, fontsize=20, pad=20)
     plt.xlabel("Mutation", fontsize=16)
     plt.ylabel("Mutation", fontsize=16)
