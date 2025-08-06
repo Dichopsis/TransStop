@@ -12,6 +12,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import seaborn as sns
 import os
 from scipy import stats
@@ -44,6 +45,14 @@ OUR_MAP = {
     'our_preds_SJ6986': 'SJ6986', 'our_preds_CC90009': 'CC90009', 'our_preds_G418': 'G418'
 }
 
+
+# Créer une palette de couleurs cohérente pour les médicaments
+drug_list_for_palette = sorted(list(OUR_MAP.values()))
+colors_rgb = sns.color_palette('tab20', n_colors=len(drug_list_for_palette))
+# Convertir les couleurs RGB en format HEX pour une compatibilité avec Plotly
+colors_hex = [mcolors.to_hex(c) for c in colors_rgb]
+drug_color_map = dict(zip(drug_list_for_palette, colors_hex))
+print("Palette de couleurs pour les médicaments créée (format HEX).")
 
 # --- Chargement des données ---
 print(f"Chargement du fichier de prédictions genome-wide depuis : {FINAL_PREDS_PATH}")
@@ -149,7 +158,7 @@ sns.heatmap(
     confusion_matrix, 
     annot=True, 
     fmt='.2f', 
-    cmap='Blues',
+    cmap='viridis',
     linewidths=.5
 )
 plt.title('Concordance de la Meilleure Drogue Prédite', fontsize=20, pad=20)
@@ -323,7 +332,7 @@ if num_high_gain_cases > 0:
     change_pair_counts = high_gain_df['change_pair'].value_counts().nlargest(10) # On prend les 10 plus fréquentes
 
     plt.figure(figsize=(12, 10))
-    barplot_pairs = sns.barplot(x=change_pair_counts.values, y=change_pair_counts.index, palette='viridis', hue=change_pair_counts.index, dodge=False, legend=False)
+    barplot_pairs = sns.barplot(x=change_pair_counts.values, y=change_pair_counts.index, palette='viridis_r', hue=change_pair_counts.index, dodge=False, legend=False)
     plt.title('Top 10 des "Changements d\'Avis" à Fort Impact (Gain > 1.0)', fontsize=18)
     plt.xlabel('Nombre de PTCs', fontsize=14)
     plt.ylabel('Changement de Drogue (Toledano -> Notre Modèle)', fontsize=14)
@@ -349,7 +358,7 @@ print("Identification de la meilleure drogue pour chaque PTC...")
 df['our_best_drug'] = df[OUR_PREDS_COLS].rename(columns=OUR_MAP).idxmax(axis=1)
 
 
-# --- Visualisation 1: Sunburst Plot (Hiérarchie Stop Type -> Meilleure Drogue) ---
+
 # --- Visualisation 1 (Revisité): Sunburst Plot Inversé (Hiérarchie Drogue -> Stop Type) ---
 print("Génération du Sunburst Plot Inversé...")
 
@@ -362,7 +371,7 @@ if 'stop_type' in df.columns:
         path=['our_best_drug', 'stop_type'], # <-- ORDRE INVERSÉ ICI
         values='ptc_count',
         color='our_best_drug', # Colorer par drogue est plus logique maintenant
-        color_discrete_sequence=px.colors.qualitative.Vivid,
+        color_discrete_map=drug_color_map,
         title='Profil de Spécialisation des Drogues par Type de Codon Stop',
     )
 
@@ -393,7 +402,6 @@ else:
 
 # Trier les drogues par performance médiane pour un ordre visuel logique
 drug_order = df_sample.groupby('drug')['predicted_rt'].median().sort_values(ascending=True).index
-palette = sns.color_palette("viridis_r", len(drug_order))
 
 # --- Construction Manuelle du Raincloud Plot ---
 fig, ax = plt.subplots(figsize=(16, 12))
@@ -408,7 +416,7 @@ for i, drug_name in enumerate(drug_order):
     # 1. --- Préparer les données pour la drogue actuelle ---
     drug_data = df_sample[df_sample['drug'] == drug_name]
     drug_log_rt = drug_data['log_rt']
-    color = palette[i]
+    color = drug_color_map[drug_name]
     
     # 2. --- Couche 1: Le "Nuage" (Half-Violin manuel) ---
     # Calculer l'estimation de la densité par noyau (KDE)
