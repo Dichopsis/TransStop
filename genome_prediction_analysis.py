@@ -373,7 +373,7 @@ for i, drug_name in enumerate(drug_order):
     jitter = np.random.uniform(-0.15, 0.15, size=len(drug_log_rt))
     y_rain = np.full_like(drug_log_rt, i + RAIN_OFFSET) + jitter
     
-    ax.scatter(drug_log_rt, y_rain, color=color, s=2, alpha=0.1, zorder=3)
+    ax.scatter(drug_log_rt, y_rain, color=color, s=0.5, alpha=0.5, zorder=3, linewidths=0)
 
 
     # 4. --- Layer 3: The Boxplot ---
@@ -412,8 +412,8 @@ ax.grid(True, axis='x', linestyle='--', alpha=0.6)
 sns.despine(left=True, bottom=True, trim=True)
 plt.tight_layout()
 
-raincloud_path = os.path.join(RESULTS_DIR, "drug_profile_raincloud_plot_custom.png")
-plt.savefig(raincloud_path, dpi=300)
+raincloud_path = os.path.join(RESULTS_DIR, "drug_profile_raincloud_plot_custom.svg")
+plt.savefig(raincloud_path)
 plt.close()
 print(f"Custom raincloud plot saved to: {raincloud_path}")
 
