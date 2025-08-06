@@ -846,179 +846,176 @@ for drug_name in drugs_to_analyze:
 print("\n--- Analyse de mutagénèse terminée ---")
 
 # --- SECTION 8.0: ANALYSE D'ÉPISTASIE PAR DOUBLE MUTAGENÈSE ---
-# print("\n--- 8.0. Analyse d'Épistasie par Double Mutagenèse In Silico ---")
+print("\n--- 8.0. Analyse d'Épistasie par Double Mutagenèse In Silico ---")
 
-# def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
-#     """
-#     Calcule les scores d'épistasie pour les paires de mutations dans une séquence donnée.
-#     """
-#     nucleotides = ['A', 'C', 'G', 'T']
+def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
+    """
+    Calcule les scores d'épistasie pour les paires de mutations dans une séquence donnée.
+    """
+    nucleotides = ['A', 'C', 'G', 'T']
     
-#     # 1. Calculer la prédiction de base (WT)
-#     wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)[0]
-#     if wt_pred == 0: wt_pred = 1e-9
-#     log_wt_pred = np.log2(wt_pred)
+    # 1. Calculer la prédiction de base (WT)
+    wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)[0]
+    if wt_pred == 0: wt_pred = 1e-9
+    log_wt_pred = np.log2(wt_pred)
 
-#     # 2. Calculer les effets de toutes les mutations simples
-#     single_mutant_effects = {}
-#     n_context = (len(sequence) - 3) // 2
-#     stop_start_index = n_context
+    # 2. Calculer les effets de toutes les mutations simples
+    single_mutant_effects = {}
+    n_context = (len(sequence) - 3) // 2
+    stop_start_index = n_context
     
-#     context_indices = [i for i in range(len(sequence)) if not (stop_start_index <= i < stop_start_index + 3)]
+    context_indices = [i for i in range(len(sequence)) if not (stop_start_index <= i < stop_start_index + 3)]
 
-#     for pos in tqdm(context_indices, desc="Calculating single mutations"):
-#         original_nuc = sequence[pos]
-#         for new_nuc in nucleotides:
-#             if original_nuc == new_nuc: continue
+    for pos in tqdm(context_indices, desc="Calculating single mutations"):
+        original_nuc = sequence[pos]
+        for new_nuc in nucleotides:
+            if original_nuc == new_nuc: continue
             
-#             mut_seq = list(sequence)
-#             mut_seq[pos] = new_nuc
-#             mut_pred = predict_batch(["".join(mut_seq)], [drug_id], tokenizer, model, device)[0]
-#             if mut_pred == 0: mut_pred = 1e-9
+            mut_seq = list(sequence)
+            mut_seq[pos] = new_nuc
+            mut_pred = predict_batch(["".join(mut_seq)], [drug_id], tokenizer, model, device)[0]
+            if mut_pred == 0: mut_pred = 1e-9
             
-#             effect = np.log2(mut_pred) - log_wt_pred
-#             single_mutant_effects[(pos, new_nuc)] = effect
+            effect = np.log2(mut_pred) - log_wt_pred
+            single_mutant_effects[(pos, new_nuc)] = effect
 
-#     # 3. Calculer les effets des doubles mutations et l'épistasie
-#     epistasis_results = []
+    # 3. Calculer les effets des doubles mutations et l'épistasie
+    epistasis_results = []
     
-#     # Créer des paires de positions uniques
-#     position_pairs = list(combinations(context_indices, 2))
+    # Créer des paires de positions uniques
+    position_pairs = list(combinations(context_indices, 2))
 
-#     for pos1, pos2 in tqdm(position_pairs, desc="Calculating double mutations"):
-#         original_nuc1 = sequence[pos1]
-#         original_nuc2 = sequence[pos2]
+    for pos1, pos2 in tqdm(position_pairs, desc="Calculating double mutations"):
+        original_nuc1 = sequence[pos1]
+        original_nuc2 = sequence[pos2]
 
-#         for new_nuc1 in nucleotides:
-#             if original_nuc1 == new_nuc1: continue
-#             for new_nuc2 in nucleotides:
-#                 if original_nuc2 == new_nuc2: continue
+        for new_nuc1 in nucleotides:
+            if original_nuc1 == new_nuc1: continue
+            for new_nuc2 in nucleotides:
+                if original_nuc2 == new_nuc2: continue
 
-#                 # Créer la séquence doublement mutée
-#                 double_mut_seq = list(sequence)
-#                 double_mut_seq[pos1] = new_nuc1
-#                 double_mut_seq[pos2] = new_nuc2
+                # Créer la séquence doublement mutée
+                double_mut_seq = list(sequence)
+                double_mut_seq[pos1] = new_nuc1
+                double_mut_seq[pos2] = new_nuc2
                 
-#                 double_mut_pred = predict_batch(["".join(double_mut_seq)], [drug_id], tokenizer, model, device)[0]
-#                 if double_mut_pred == 0: double_mut_pred = 1e-9
+                double_mut_pred = predict_batch(["".join(double_mut_seq)], [drug_id], tokenizer, model, device)[0]
+                if double_mut_pred == 0: double_mut_pred = 1e-9
                 
-#                 # Effet observé du double mutant
-#                 observed_effect = np.log2(double_mut_pred) - log_wt_pred
+                # Effet observé du double mutant
+                observed_effect = np.log2(double_mut_pred) - log_wt_pred
                 
-#                 # Effet attendu (additif)
-#                 effect1 = single_mutant_effects.get((pos1, new_nuc1), 0)
-#                 effect2 = single_mutant_effects.get((pos2, new_nuc2), 0)
-#                 expected_effect = effect1 + effect2
+                # Effet attendu (additif)
+                effect1 = single_mutant_effects.get((pos1, new_nuc1), 0)
+                effect2 = single_mutant_effects.get((pos2, new_nuc2), 0)
+                expected_effect = effect1 + effect2
                 
-#                 # Score d'épistasie
-#                 epistasis_score = observed_effect - expected_effect
+                # Score d'épistasie
+                epistasis_score = observed_effect - expected_effect
                 
-#                 epistasis_results.append({
-#                     'mutation1': f"{pos1-n_context}:{original_nuc1}>{new_nuc1}",
-#                     'mutation2': f"{pos2-n_context}:{original_nuc2}>{new_nuc2}",
-#                     'epistasis_score': epistasis_score
-#                 })
+                epistasis_results.append({
+                    'mutation1': f"{pos1-n_context}:{original_nuc1}>{new_nuc1}",
+                    'mutation2': f"{pos2-n_context}:{original_nuc2}>{new_nuc2}",
+                    'epistasis_score': epistasis_score
+                })
 
-#     return pd.DataFrame(epistasis_results)
+    return pd.DataFrame(epistasis_results)
 
-# def plot_epistasis_heatmap(df, title, filename, reference_sequence):
-#     """
-#     Génère une heatmap des scores d'épistasie, en s'assurant que les axes sont
-#     triés numériquement par position de mutation.
-#     """
-#     if df.empty:
-#         print("Le DataFrame d'épistasie est vide. Impossible de générer la heatmap.")
-#         return
+def plot_epistasis_heatmap(df, title, filename, reference_sequence):
+    """
+    Génère une heatmap des scores d'épistasie, en s'assurant que les axes sont
+    triés numériquement par position de mutation.
+    """
+    if df.empty:
+        print("Le DataFrame d'épistasie est vide. Impossible de générer la heatmap.")
+        return
         
-#     # --- CORRECTION DU BUG DE TRI ---
-#     # 1. Fonction utilitaire pour extraire la position numérique du label.
-#     def get_pos_from_label(label):
-#         try:
-#             # Extrait la partie avant le ':' et la convertit en entier.
-#             return int(label.split(':')[0])
-#         except (ValueError, IndexError):
-#             # Retourne une grande valeur pour les labels mal formés pour les trier à la fin.
-#             return float('inf')
+    # --- CORRECTION DU BUG DE TRI ---
+    # 1. Fonction utilitaire pour extraire la position numérique du label.
+    def get_pos_from_label(label):
+        try:
+            # Extrait la partie avant le ':' et la convertit en entier.
+            return int(label.split(':')[0])
+        except (ValueError, IndexError):
+            # Retourne une grande valeur pour les labels mal formés pour les trier à la fin.
+            return float('inf')
 
-#     # 2. Obtenir tous les labels de mutation uniques et les trier numériquement.
-#     all_labels = pd.unique(df[['mutation1', 'mutation2']].values.ravel('K'))
-#     # Filtrer les labels potentiellement nuls ou mal formés pour éviter les erreurs.
-#     all_labels = [label for label in all_labels if isinstance(label, str) and ':' in label]
-#     sorted_labels = sorted(all_labels, key=get_pos_from_label)
+    # 2. Obtenir tous les labels de mutation uniques et les trier numériquement.
+    all_labels = pd.unique(df[['mutation1', 'mutation2']].values.ravel('K'))
+    # Filtrer les labels potentiellement nuls ou mal formés pour éviter les erreurs.
+    all_labels = [label for label in all_labels if isinstance(label, str) and ':' in label]
+    sorted_labels = sorted(all_labels, key=get_pos_from_label)
     
-#     # 3. Créer la table pivot et la réindexer avec les labels triés pour forcer le bon ordre.
-#     epistasis_matrix = df.pivot_table(index='mutation1', columns='mutation2', values='epistasis_score')
-#     epistasis_matrix = epistasis_matrix.reindex(index=sorted_labels, columns=sorted_labels)
-#     # --- FIN DE LA CORRECTION ---
+    # 3. Créer la table pivot et la réindexer avec les labels triés pour forcer le bon ordre.
+    epistasis_matrix = df.pivot_table(index='mutation1', columns='mutation2', values='epistasis_score')
+    epistasis_matrix = epistasis_matrix.reindex(index=sorted_labels, columns=sorted_labels)
+    # --- FIN DE LA CORRECTION ---
 
-#     # Rendre la matrice symétrique pour une meilleure visualisation.
-#     # combine_first remplit les NaN d'une matrice avec les valeurs de l'autre.
-#     epistasis_matrix = epistasis_matrix.combine_first(epistasis_matrix.T)
+    # Rendre la matrice symétrique pour une meilleure visualisation.
+    # combine_first remplit les NaN d'une matrice avec les valeurs de l'autre.
+    epistasis_matrix = epistasis_matrix.combine_first(epistasis_matrix.T)
     
-#     # Remplir la diagonale avec 0 car une mutation n'interagit pas avec elle-même dans ce contexte.
-#     np.fill_diagonal(epistasis_matrix.values, 0)
+    # Remplir la diagonale avec 0 car une mutation n'interagit pas avec elle-même dans ce contexte.
+    np.fill_diagonal(epistasis_matrix.values, 0)
 
-#     plt.figure(figsize=(20, 18))
-#     heatmap = sns.heatmap(
-#         epistasis_matrix,
-#         cmap='coolwarm',
-#         center=0,
-#         annot=False, # L'annotation surchargerait complètement le graphique.
-#         square=True, # Assurer que les cellules sont carrées pour une meilleure lisibilité.
-#         linewidths=.1
-#     )
-#     heatmap.collections[0].colorbar.set_label("Epistasis Score", rotation=270, labelpad=20)
-#     full_title = f"{title}\nSéquence de référence: {reference_sequence}"
-#     plt.title(full_title, fontsize=20, pad=20)
-#     plt.xlabel("Mutation", fontsize=16)
-#     plt.ylabel("Mutation", fontsize=16)
+    plt.figure(figsize=(20, 18))
+    heatmap = sns.heatmap(
+        epistasis_matrix,
+        cmap='coolwarm',
+        center=0,
+        annot=False, # L'annotation surchargerait complètement le graphique.
+        square=True, # Assurer que les cellules sont carrées pour une meilleure lisibilité.
+        linewidths=.1
+    )
+    heatmap.collections[0].colorbar.set_label("Epistasis Score", rotation=270, labelpad=20)
+    full_title = f"{title}\nSéquence de référence: {reference_sequence}"
+    plt.title(full_title, fontsize=20, pad=20)
+    plt.xlabel("Mutation", fontsize=16)
+    plt.ylabel("Mutation", fontsize=16)
     
-#     # Améliorer la lisibilité des labels des axes.
-#     plt.xticks(rotation=90, fontsize=8)
-#     plt.yticks(rotation=0, fontsize=8)
+    # Améliorer la lisibilité des labels des axes.
+    plt.xticks(rotation=90, fontsize=8)
+    plt.yticks(rotation=0, fontsize=8)
     
-#     plt.tight_layout()
-#     plt.savefig(filename, dpi=300)
-#     plt.close()
-#     print(f"Heatmap d'épistasie sauvegardée dans '{filename}'.")
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    plt.close()
+    print(f"Heatmap d'épistasie sauvegardée dans '{filename}'.")
 
-# # --- Logique principale de l'analyse d'épistasie (généralisée) ---
-# print("\nLancement de l'analyse d'épistasie généralisée...")
+# --- Logique principale de l'analyse d'épistasie (généralisée) ---
+print("\nLancement de l'analyse d'épistasie généralisée...")
 
-# # Définir les types de codons stop à analyser
-# stop_types_to_analyze = ['uaa', 'uag', 'uga']
+# Définir les types de codons stop à analyser
+stop_types_to_analyze = ['uaa', 'uag', 'uga']
 
-# # Boucler sur chaque médicament et chaque type de codon stop
-# for drug_name in drug_to_id.keys():
-#     drug_id = drug_to_id[drug_name]
-#     drug_df = test_df[test_df['drug'] == drug_name]
+# Boucler sur chaque médicament et chaque type de codon stop
+for drug_name in drug_to_id.keys():
+    drug_id = drug_to_id[drug_name]
+    drug_df = test_df[test_df['drug'] == drug_name]
     
-#     for stop_type in stop_types_to_analyze:
-#         # Sélectionner la séquence de référence la plus performante pour ce combo
-#         reference_df = drug_df[drug_df['stop_type'] == stop_type]
+    for stop_type in stop_types_to_analyze:
+        # Sélectionner la séquence de référence la plus performante pour ce combo
+        reference_df = drug_df[drug_df['stop_type'] == stop_type]
         
-#         if reference_df.empty:
-#             print(f"Aucune séquence trouvée pour {drug_name} avec codon stop {stop_type}. Analyse d'épistasie ignorée.")
-#             continue
+        if reference_df.empty:
+            print(f"Aucune séquence trouvée pour {drug_name} avec codon stop {stop_type}. Analyse d'épistasie ignorée.")
+            continue
         
-#         # Trier par prédiction pour trouver la meilleure séquence
-#         reference_sequence = reference_df.loc[reference_df['preds'].idxmax()][context_col]
+        # Trier par prédiction pour trouver la meilleure séquence
+        reference_sequence = reference_df.loc[reference_df['preds'].idxmax()][context_col]
         
-#         print(f"\nAnalyse d'épistasie pour {drug_name} sur le codon {stop_type}...")
-#         print(f"Séquence de référence : {reference_sequence}")
+        print(f"\nAnalyse d'épistasie pour {drug_name} sur le codon {stop_type}...")
+        print(f"Séquence de référence : {reference_sequence}")
         
-#         # Effectuer l'analyse d'épistasie
-#         epistasis_df = calculate_epistasis(reference_sequence, drug_id, model, tokenizer, DEVICE)
+        # Effectuer l'analyse d'épistasie
+        epistasis_df = calculate_epistasis(reference_sequence, drug_id, model, tokenizer, DEVICE)
         
-#         # Générer la heatmap
-#         if not epistasis_df.empty:
-#             plot_title = f"Analyse d'Épistasie pour {drug_name} (Stop: {stop_type})"
-#             output_filename = os.path.join(RESULTS_DIR, f"epistasis_heatmap_{drug_name}_{stop_type}.png")
-#             plot_epistasis_heatmap(epistasis_df, plot_title, output_filename, reference_sequence)
-#         else:
-#             print(f"Le DataFrame d'épistasie est vide pour {drug_name} / {stop_type}. Aucune heatmap générée.")
+        # Générer la heatmap
+        if not epistasis_df.empty:
+            plot_title = f"Analyse d'Épistasie pour {drug_name} (Stop: {stop_type})"
+            output_filename = os.path.join(RESULTS_DIR, f"epistasis_heatmap_{drug_name}_{stop_type}.png")
+            plot_epistasis_heatmap(epistasis_df, plot_title, output_filename, reference_sequence)
+        else:
+            print(f"Le DataFrame d'épistasie est vide pour {drug_name} / {stop_type}. Aucune heatmap générée.")
 
-# print("\n--- Analyse d'épistasie généralisée terminée ---")
-
-
-print("--- FIN DU PROJET ---")
+print("\n--- Analyse d'épistasie généralisée terminée ---")
