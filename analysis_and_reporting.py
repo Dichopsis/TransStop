@@ -26,7 +26,7 @@ from safetensors.torch import load_file
 import logomaker
 from itertools import combinations
 
-# --- Configuration et Chargement des Artefacts ---
+# --- Configuration and Artifact Loading ---
 print("--- PART 3: DEEP MODEL INTERPRETATION AND INSIGHT GENERATION (Corrected) ---")
 
 RESULTS_DIR = "./results/"
@@ -34,64 +34,64 @@ MODELS_DIR = "./models/"
 PROCESSED_DATA_DIR = "./processed_data/"
 PROD_MODEL_PATH = os.path.join(MODELS_DIR, "production_model")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Utilisation du device : {DEVICE}")
+print(f"Using device: {DEVICE}")
 
-# Charger les configurations et les données nécessaires
+# Load necessary configurations and data
 try:
     with open(os.path.join(RESULTS_DIR, "best_hyperparams.json"), 'r') as f:
         best_hyperparams = json.load(f)
     best_config_df = pd.read_csv(os.path.join(RESULTS_DIR, "systematic_evaluation_log.csv"))
-    best_config = best_config_df.iloc[0].to_dict()
+    best_config = best_config_df.iloc.to_dict()
     test_df_original = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, "test_df.csv"))
 except FileNotFoundError as e:
-    print(f"Erreur de chargement de fichier : {e}")
-    print("Veuillez vous assurer que les scripts 01 et 02b ont été exécutés avec succès.")
+    print(f"File loading error: {e}")
+    print("Please ensure that scripts 01 and 02b have been executed successfully.")
     exit()
 
-# *** CORRECTION DÉFINITIVE : CHARGEMENT DU MAPPAGE DEPUIS LA SOURCE DE VÉRITÉ ***
-# Au lieu de reconstruire le mappage, nous le chargeons depuis le fichier JSON 
-# qui a été sauvegardé ou reconstruit à l'identique.
-# C'est la seule méthode qui garantit une synchronisation parfaite avec le modèle entraîné.
+# *** FINAL CORRECTION: LOADING THE MAPPING FROM THE SOURCE OF TRUTH ***
+# Instead of reconstructing the mapping, we load it from the JSON file
+# that was saved or reconstructed identically.
+# This is the only method that guarantees perfect synchronization with the trained model.
 try:
     map_path = os.path.join(PROD_MODEL_PATH, "drug_map.json")
     with open(map_path, 'r') as f:
         drug_to_id = json.load(f)
     
-    # Créer le mappage inverse
+    # Create the inverse mapping
     id_to_drug = {i: drug for drug, i in drug_to_id.items()}
     NUM_DRUGS = len(drug_to_id)
-    print("Mappage des médicaments chargé avec succès depuis la source de vérité :", drug_to_id)
+    print("Drug mapping loaded successfully from the source of truth:", drug_to_id)
 
-    # Créer une palette de couleurs cohérente pour les médicaments
+    # Create a consistent color palette for the drugs
     drug_list_for_palette = sorted(drug_to_id.keys())
     colors = sns.color_palette('tab20', n_colors=len(drug_list_for_palette))
     drug_color_map = dict(zip(drug_list_for_palette, colors))
-    print("Palette de couleurs pour les médicaments créée.")
+    print("Color palette for drugs created.")
 
 except FileNotFoundError:
-    print(f"ERREUR CRITIQUE : Le fichier 'drug_map.json' est introuvable dans {PROD_MODEL_PATH}.")
-    print("Ce fichier est essentiel. Veuillez exécuter le script 'reconstruct_and_save_map.py' pour le créer.")
+    print(f"CRITICAL ERROR: The file 'drug_map.json' was not found in {PROD_MODEL_PATH}.")
+    print("This file is essential. Please run the 'reconstruct_and_save_map.py' script to create it.")
     exit()
-# *** FIN DE LA CORRECTION ***
+# *** END OF CORRECTION ***
 
 
-# Appliquer le mappage chargé et cohérent au jeu de test
+# Apply the loaded and consistent mapping to the test set
 test_df_original['drug_id'] = test_df_original['drug'].map(drug_to_id)
-# Vérifier si des médicaments du test n'étaient pas dans le mappage (ce qui serait une erreur de pipeline)
+# Check if any drugs from the test set were not in the mapping (which would be a pipeline error)
 if test_df_original['drug_id'].isnull().any():
     missing_drugs = test_df_original[test_df_original['drug_id'].isnull()]['drug'].unique()
-    print(f"ATTENTION : Les médicaments suivants du jeu de test n'ont pas été trouvés dans le mappage : {missing_drugs}")
-    print("Les lignes correspondantes seront supprimées.")
+    print(f"WARNING: The following drugs from the test set were not found in the mapping: {missing_drugs}")
+    print("The corresponding rows will be deleted.")
     test_df_original.dropna(subset=['drug_id'], inplace=True)
     test_df_original['drug_id'] = test_df_original['drug_id'].astype(int)
 
 
-# Définir des variables globales qui pourraient être utilisées plus tard (ex: pour UMAP)
-SEED = 42 # Assurez-vous que SEED est défini si vous l'utilisez dans UMAP ou .sample()
+# Define global variables that might be used later (e.g., for UMAP)
+SEED = 42 # Make sure SEED is defined if you use it in UMAP or .sample()
 MODEL_HF_NAME = "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species"
 context_col = best_config['context_column']
 
-# --- Recréer la classe du modèle ---
+# --- Recreate the model class ---
 class PTCDataset(Dataset):
     def __init__(self, dataframe, tokenizer, context_col):
         self.df = dataframe
@@ -127,23 +127,23 @@ class PanDrugTransformerForTrainer(torch.nn.Module):
     
     def forward(self, input_ids, attention_mask, drug_id, labels=None, **kwargs):
         output_attentions = kwargs.get("output_attentions", False)
-        output_hidden_states = kwargs.get("output_hidden_states", False) # Ajout pour les embeddings
+        output_hidden_states = kwargs.get("output_hidden_states", False) # Added for embeddings
         
         base_model_outputs = self.base_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states # Passer l'argument
+            output_hidden_states=output_hidden_states # Pass the argument
         )
-        # Utiliser le CLS token [:, 0] pour la représentation de la séquence
+        # Use the CLS token [:, 0] for sequence representation
         cls_embedding = base_model_outputs.last_hidden_state[:, 0]
-        # Obtenir l'embedding du médicament
+        # Get the drug embedding
         drug_emb = self.drug_embedding(drug_id)
-        # Concaténer et passer dans la tête de régression
+        # Concatenate and pass through the regression head
         combined_embedding = torch.cat([cls_embedding, drug_emb], dim=1)
         logits = self.reg_head(combined_embedding).squeeze(-1)
         
-        # Retourner les logits, les attentions (si demandé) et les embeddings CLS (si demandé)
+        # Return logits, attentions (if requested), and CLS embeddings (if requested)
         if output_attentions and output_hidden_states:
             return logits, base_model_outputs.attentions, cls_embedding
         elif output_attentions:
@@ -152,8 +152,8 @@ class PanDrugTransformerForTrainer(torch.nn.Module):
             return logits, cls_embedding
         return logits
 
-# --- Chargement du Modèle de Production ---
-print("Chargement du modèle de production...")
+# --- Loading the Production Model ---
+print("Loading the production model...")
 tokenizer = AutoTokenizer.from_pretrained(PROD_MODEL_PATH, trust_remote_code=True)
 model = PanDrugTransformerForTrainer(
     MODEL_HF_NAME, NUM_DRUGS, 
@@ -164,21 +164,21 @@ model = PanDrugTransformerForTrainer(
 weights_path_safetensors = os.path.join(PROD_MODEL_PATH, 'model.safetensors')
 weights_path_bin = os.path.join(PROD_MODEL_PATH, 'pytorch_model.bin')
 if os.path.exists(weights_path_safetensors):
-    print("Chargement des poids depuis model.safetensors...")
+    print("Loading weights from model.safetensors...")
     state_dict = load_file(weights_path_safetensors, device=DEVICE)
     model.load_state_dict(state_dict)
 elif os.path.exists(weights_path_bin):
-    print("Chargement des poids depuis pytorch_model.bin...")
+    print("Loading weights from pytorch_model.bin...")
     model.load_state_dict(torch.load(weights_path_bin, map_location=torch.device(DEVICE)))
 else:
-    raise FileNotFoundError(f"Aucun fichier de poids ('model.safetensors' ou 'pytorch_model.bin') trouvé dans {PROD_MODEL_PATH}")
+    raise FileNotFoundError(f"No weight file ('model.safetensors' or 'pytorch_model.bin') found in {PROD_MODEL_PATH}")
 model.to(DEVICE)
 model.eval()
-print("Modèle chargé avec succès.")
+print("Model loaded successfully.")
 
 
-# --- SECTION 3.0: Évaluation des Performances par Médicament ---
-print("\n--- 3.0. Évaluation des Performances par Médicament sur le jeu de Test ---")
+# --- SECTION 3.0: Performance Evaluation per Drug ---
+print("\n--- 3.0. Performance Evaluation per Drug on the Test Set ---")
 
 test_df = test_df_original.copy().reset_index(drop=True)
 test_dataset = PTCDataset(test_df, tokenizer, context_col)
@@ -186,8 +186,8 @@ test_loader = DataLoader(test_dataset, batch_size=64, collate_fn=default_data_co
 
 all_preds_transformed = []
 with torch.no_grad():
-    for batch in tqdm(test_loader, desc="Prédictions sur le jeu de test"):
-        # Déplacer seulement les tenseurs vers le GPU
+    for batch in tqdm(test_loader, desc="Predictions on the test set"):
+        # Move only tensors to the GPU
         batch = {k: v.to(DEVICE) for k, v in batch.items() if isinstance(v, torch.Tensor)}
         preds = model(**batch)
         all_preds_transformed.extend(preds.cpu().numpy())
@@ -200,20 +200,20 @@ r2_per_drug = {}
 for drug_name, group_df in test_df.groupby('drug'):
     r2 = r2_score(group_df['RT'], group_df['preds'])
     r2_per_drug[drug_name] = r2
-    print(f"R² pour {drug_name}: {r2:.4f}")
+    print(f"R² for {drug_name}: {r2:.4f}")
 
 r2_per_drug_df = pd.DataFrame(list(r2_per_drug.items()), columns=['Drug', 'R2_Score']).sort_values('R2_Score', ascending=False)
 r2_global = r2_score(test_df['RT'], test_df['preds'])
-print(f"\n--- R² Global sur le jeu de test : {r2_global:.4f} ---")
+print(f"\n--- Global R² on the test set: {r2_global:.4f} ---")
 
-print("Génération du graphique de corrélation global avec coloration par médicament...")
+print("Generating the global correlation plot with coloring by drug...")
 
 plt.figure(figsize=(12, 12))
 
-# 1. Créer le nuage de points avec coloration par médicament
-# 'hue' colore les points en fonction de la colonne 'drug'
-# 'alpha' ajoute de la transparence pour mieux voir les zones denses
-# 's' contrôle la taille des points
+# 1. Create the scatter plot with coloring by drug
+# 'hue' colors the points based on the 'drug' column
+# 'alpha' adds transparency to better see dense areas
+# 's' controls the size of the points
 sns.scatterplot(
     data=test_df,
     x='RT',
@@ -222,76 +222,76 @@ sns.scatterplot(
     palette=drug_color_map,
     alpha=0.7,
     s=50,
-    edgecolor='k', # Ajoute un léger contour noir aux points pour la lisibilité
+    edgecolor='k', # Adds a slight black outline to the points for readability
     linewidth=0.5
 )
 
-# 2. Déterminer les limites du graphique pour tracer une ligne parfaite
+# 2. Determine the plot limits to draw a perfect line
 min_val = min(test_df['RT'].min(), test_df['preds'].min())
 max_val = max(test_df['RT'].max(), test_df['preds'].max())
-# Ajouter une petite marge
+# Add a small margin
 min_val -= (max_val - min_val) * 0.05
 max_val += (max_val - min_val) * 0.05
 
-# 3. Tracer la ligne de perfection (y=x) en pointillés rouges
-# C'est la ligne sur laquelle tous les points se trouveraient si les prédictions étaient parfaites
-plt.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Prédiction Parfaite (y=x)')
+# 3. Draw the perfection line (y=x) in dashed red
+# This is the line on which all points would lie if the predictions were perfect
+plt.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='Perfect Prediction (y=x)')
 
-# 4. Ajouter les titres, les labels et la grille
-plt.title('Prédictions vs. Valeurs Réelles sur le Jeu de Test', fontsize=20, pad=20)
-plt.xlabel('Valeur Réelle de Readthrough (RT)', fontsize=16)
-plt.ylabel('Valeur Prédite de Readthrough (RT)', fontsize=16)
+# 4. Add titles, labels, and grid
+plt.title('Predictions vs. Actual Values on the Test Set', fontsize=20, pad=20)
+plt.xlabel('Actual Readthrough Value (RT)', fontsize=16)
+plt.ylabel('Predicted Readthrough Value (RT)', fontsize=16)
 plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-plt.legend(title='Médicament', fontsize=12, title_fontsize=14)
+plt.legend(title='Drug', fontsize=12, title_fontsize=14)
 
-# 5. Ajouter le R² global sur le graphique pour le contexte
+# 5. Add the global R² on the plot for context
 plt.text(
     x=min_val, 
-    y=max_val * 0.95, # Positionner le texte en haut à gauche
-    s=f'R² Global = {r2_global:.4f}',
+    y=max_val * 0.95, # Position the text in the top left
+    s=f'Global R² = {r2_global:.4f}',
     fontdict={'size': 16, 'weight': 'bold', 'color': 'white'},
-    bbox=dict(facecolor='black', alpha=0.6) # Boîte de fond pour la lisibilité
+    bbox=dict(facecolor='black', alpha=0.6) # Background box for readability
 )
 
-# 6. Assurer un ratio d'aspect carré pour que la ligne y=x soit bien à 45 degrés
+# 6. Ensure a square aspect ratio so that the y=x line is at 45 degrees
 plt.axis('equal')
 plt.xlim(min_val, max_val)
 plt.ylim(min_val, max_val)
 
-# 7. Sauvegarder la figure
+# 7. Save the figure
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "global_correlation_plot.png"), dpi=300)
 plt.close()
 
-print("Graphique de corrélation global sauvegardé dans 'global_correlation_plot.png'.")
+print("Global correlation plot saved in 'global_correlation_plot.png'.")
 
-# Insérez ce bloc après la génération du graphique de corrélation global.
+# Insert this block after generating the global correlation plot.
 
-print("Génération de la grille de graphiques de corrélation par médicament...")
+print("Generating the grid of correlation plots by drug...")
 
-# 1. Obtenir la liste des drogues et préparer la grille de graphiques
+# 1. Get the list of drugs and prepare the plot grid
 drug_list = sorted(test_df['drug'].unique())
 num_drugs = len(drug_list)
-# Calculer dynamiquement le nombre de lignes et de colonnes
+# Dynamically calculate the number of rows and columns
 n_cols = 3 
-n_rows = (num_drugs + n_cols - 1) // n_cols # Calcule le nombre de lignes nécessaires
+n_rows = (num_drugs + n_cols - 1) // n_cols # Calculates the number of rows needed
 
 fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5 * n_rows), sharex=False, sharey=False)
-axes = axes.flatten() # Aplatir la grille 2D en une liste 1D pour une itération facile
+axes = axes.flatten() # Flatten the 2D grid into a 1D list for easy iteration
 
-# La palette est maintenant définie globalement avec drug_color_map
+# The palette is now defined globally with drug_color_map
 
-# 2. Boucler sur chaque drogue et créer son propre graphique
+# 2. Loop over each drug and create its own plot
 for i, drug_name in enumerate(drug_list):
-    ax = axes[i] # Sélectionner le sous-graphique courant
+    ax = axes[i] # Select the current subplot
     
-    # Filtrer les données pour la drogue actuelle
+    # Filter the data for the current drug
     drug_df = test_df[test_df['drug'] == drug_name]
     
-    # Récupérer le score R² déjà calculé
+    # Retrieve the already calculated R² score
     r2_value = r2_per_drug[drug_name]
     
-    # Dessiner le nuage de points sur le sous-graphique
+    # Draw the scatter plot on the subplot
     sns.scatterplot(
         data=drug_df,
         x='RT',
@@ -304,17 +304,17 @@ for i, drug_name in enumerate(drug_list):
         linewidth=0.5
     )
     
-    # Déterminer les limites pour la ligne de prédiction parfaite (spécifique à ce graphique)
+    # Determine the limits for the perfect prediction line (specific to this plot)
     min_val = min(drug_df['RT'].min(), drug_df['preds'].min())
     max_val = max(drug_df['RT'].max(), drug_df['preds'].max())
     margin = (max_val - min_val) * 0.05
     min_val -= margin
     max_val += margin
     
-    # Tracer la ligne de perfection (y=x)
+    # Draw the perfection line (y=x)
     ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=1.5)
     
-    # Ajouter le titre et le R²
+    # Add the title and R²
     ax.set_title(f'{drug_name}', fontsize=14, weight='bold')
     ax.text(
         x=min_val,
@@ -324,68 +324,68 @@ for i, drug_name in enumerate(drug_list):
         bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.3')
     )
     
-    # Personnaliser les axes
-    ax.set_xlabel('Valeur Réelle (RT)', fontsize=10)
-    ax.set_ylabel('Valeur Prédite (RT)', fontsize=10)
+    # Customize the axes
+    ax.set_xlabel('Actual Value (RT)', fontsize=10)
+    ax.set_ylabel('Predicted Value (RT)', fontsize=10)
     ax.grid(True, linestyle='--', linewidth=0.5)
-    ax.axis('equal') # Assurer un ratio 1:1
+    ax.axis('equal') # Ensure a 1:1 ratio
     ax.set_xlim(min_val, max_val)
     ax.set_ylim(min_val, max_val)
 
-# 3. Masquer les sous-graphiques inutilisés s'il y en a
+# 3. Hide unused subplots if any
 for j in range(num_drugs, len(axes)):
     axes[j].set_visible(False)
 
-# 4. Ajouter un titre principal à la figure
-fig.suptitle('Prédictions vs. Valeurs Réelles par Médicament', fontsize=22, y=1.02)
+# 4. Add a main title to the figure
+fig.suptitle('Predictions vs. Actual Values by Drug', fontsize=22, y=1.02)
 
-# 5. Ajuster la mise en page et sauvegarder
-fig.tight_layout(rect=[0, 0.03, 1, 0.98]) # rect laisse de la place pour le suptitle
+# 5. Adjust the layout and save
+fig.tight_layout(rect=[0, 0.03, 1, 0.98]) # rect leaves space for the suptitle
 plt.savefig(os.path.join(RESULTS_DIR, "per_drug_correlation_grid.png"), dpi=300)
 plt.close()
 
-print("Grille de graphiques par médicament sauvegardée dans 'per_drug_correlation_grid.png'.")
+print("Grid of plots by drug saved in 'per_drug_correlation_grid.png'.")
 
 toledano_r2 = {
     'Pan-drug': 0.83, 'CC90009': 0.55, 'Clitocine': 0.89, 'DAP': 0.87,
     'G418': 0.76, 'SJ6986': 0.71, 'SRI': 0.76, 'FUr': 0.37, 'Gentamicin': 0.38, 'Untreated': 0.02,
 }
 
-# Vos résultats (R² par drogue et R² global)
-# r2_per_drug est un dictionnaire que vous avez déjà calculé
-# r2_global est la variable que vous avez déjà calculée
+# Your results (R² per drug and global R²)
+# r2_per_drug is a dictionary you have already calculated
+# r2_global is the variable you have already calculated
 our_r2 = r2_per_drug.copy()
 our_r2['Pan-drug'] = r2_global
 
-# Créer un DataFrame pour la comparaison
+# Create a DataFrame for comparison
 comparison_data = []
 for drug, r2_val in our_r2.items():
     if drug in toledano_r2:
-        comparison_data.append({'Drug': drug, 'R2_Score': r2_val, 'Model': 'Notre Transformer'})
+        comparison_data.append({'Drug': drug, 'R2_Score': r2_val, 'Model': 'Our Transformer'})
         comparison_data.append({'Drug': drug, 'R2_Score': toledano_r2[drug], 'Model': 'Toledano et al.'})
 
 comparison_df = pd.DataFrame(comparison_data)
 comparison_df = comparison_df.sort_values(by='R2_Score', ascending=False)
 
-# Créer le graphique de comparaison
+# Create the comparison plot
 plt.figure(figsize=(14, 10))
 barplot = sns.barplot(
     data=comparison_df,
     x='R2_Score',
     y='Drug',
     hue='Model',
-    palette={'Notre Transformer': 'deepskyblue', 'Toledano et al.': 'lightgray'},
+    palette={'Our Transformer': 'deepskyblue', 'Toledano et al.': 'lightgray'},
     dodge=True
 )
 
-plt.title('Comparaison des Performances de Modèle (R²)', fontsize=20, pad=20)
+plt.title('Model Performance Comparison (R²)', fontsize=20, pad=20)
 plt.xlabel('R² Score', fontsize=16)
-plt.ylabel('Médicament / Condition', fontsize=16)
+plt.ylabel('Drug / Condition', fontsize=16)
 plt.xlim(0, 1.05)
 plt.grid(axis='x', linestyle='--', alpha=0.7)
-plt.legend(title='Modèle', fontsize=12, title_fontsize=14)
+plt.legend(title='Model', fontsize=12, title_fontsize=14)
 
-# Ajouter les valeurs sur les barres
+# Add values on the bars
 for p in barplot.patches:
     width = p.get_width()
     plt.text(width + 0.01, p.get_y() + p.get_height() / 2,
@@ -395,58 +395,58 @@ for p in barplot.patches:
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "r2_comparison_barplot.png"), dpi=300)
 plt.close()
-print("Graphique de comparaison des R² sauvegardé.")
+print("R² comparison bar plot saved.")
     
 
-print("\n--- 4.0. Génération des Logos de Séquence ---")
+print("\n--- 4.0. Generation of Sequence Logos ---")
 
 def generate_sequence_logos_for_drug(drug_name, drug_df, context_col, n_seqs=100):
-    # Trier les séquences par performance prédite
+    # Sort sequences by predicted performance
     best_df = drug_df.nlargest(n_seqs, 'preds')
     worst_df = drug_df.nsmallest(n_seqs, 'preds')
 
     best_seqs = best_df[context_col].tolist()
     worst_seqs = worst_df[context_col].tolist()
 
-    # Créer les matrices de comptage
+    # Create count matrices
     best_counts_df = logomaker.alignment_to_matrix(best_seqs)
     worst_counts_df = logomaker.alignment_to_matrix(worst_seqs)
     
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 8))
     
-    # Logo pour les meilleures séquences
+    # Logo for the best sequences
     logomaker.Logo(best_counts_df, ax=ax1, color_scheme='classic')
-    ax1.set_title(f"Séquences les plus performantes (Top {n_seqs}) pour {drug_name}", fontsize=16)
+    ax1.set_title(f"Top Performing Sequences (Top {n_seqs}) for {drug_name}", fontsize=16)
     ax1.set_ylabel("Bits")
     
-    # Logo pour les pires séquences
+    # Logo for the worst sequences
     logomaker.Logo(worst_counts_df, ax=ax2, color_scheme='classic')
-    ax2.set_title(f"Séquences les moins performantes (Bottom {n_seqs}) pour {drug_name}", fontsize=16)
+    ax2.set_title(f"Least Performing Sequences (Bottom {n_seqs}) for {drug_name}", fontsize=16)
     ax2.set_ylabel("Bits")
     
     plt.tight_layout()
     plt.savefig(os.path.join(RESULTS_DIR, f"sequence_logo_{drug_name}.png"), dpi=300)
     plt.close()
-    print(f"Logo de séquence sauvegardé pour {drug_name}.")
+    print(f"Sequence logo saved for {drug_name}.")
 
-# Générer les logos pour chaque médicament
+# Generate logos for each drug
 for drug_name, group_df in test_df.groupby('drug'):
-    # S'assurer qu'il y a assez de séquences pour l'analyse
+    # Ensure there are enough sequences for the analysis
     if len(group_df) >= 200:
         generate_sequence_logos_for_drug(drug_name, group_df, context_col)
     else:
-        print(f"Pas assez de données pour {drug_name} pour générer les logos de séquence.")
+        print(f"Not enough data for {drug_name} to generate sequence logos.")
 
 
-# --- SECTION 4.0: PRÉPARATION ET FONCTION UTILITAIRE ---
-print("\n--- 4.0. Préparation pour l'Analyse d'Interprétabilité ---")
+# --- SECTION 4.0: PREPARATION AND UTILITY FUNCTION ---
+print("\n--- 4.0. Preparation for Interpretability Analysis ---")
 
 def predict_batch(sequences, drug_ids, tokenizer, model, device):
     """
-    Fonction utilitaire pour prédire un batch de séquences pour des drogues données.
-    Prend une liste de séquences et une liste d'IDs de drogues correspondants.
+    Utility function to predict a batch of sequences for given drugs.
+    Takes a list of sequences and a list of corresponding drug IDs.
     """
-    # Gérer le cas de listes vides pour éviter les erreurs
+    # Handle the case of empty lists to avoid errors
     if not sequences:
         return np.array([])
         
@@ -459,26 +459,26 @@ def predict_batch(sequences, drug_ids, tokenizer, model, device):
         
     return np.expm1(preds_transformed.cpu().numpy())
 
-# --- SECTION 4.1: SIMILARITÉ FONCTIONNELLE DES PROFILS DE PRÉDICTION ---
-print("\n--- 4.1. Analyse de la Similarité des Profils de Prédiction des Médicaments ---")
+# --- SECTION 4.1: FUNCTIONAL SIMILARITY OF PREDICTION PROFILES ---
+print("\n--- 4.1. Analysis of the Similarity of Drug Prediction Profiles ---")
 
-# 1. Utiliser un ensemble commun de séquences pour la comparaison
+# 1. Use a common set of sequences for comparison
 unique_sequences = test_df[context_col].unique().tolist()
-print(f"Génération de prédictions in-silico pour {len(unique_sequences)} séquences uniques sur toutes les drogues...")
+print(f"Generating in-silico predictions for {len(unique_sequences)} unique sequences across all drugs...")
 
-# 2. Générer les prédictions pour chaque drogue sur cet ensemble commun
+# 2. Generate predictions for each drug on this common set
 all_drug_preds = {}
-for drug_name, drug_id in tqdm(drug_to_id.items(), desc="Profilage des drogues"):
+for drug_name, drug_id in tqdm(drug_to_id.items(), desc="Profiling drugs"):
     drug_ids_batch = [drug_id] * len(unique_sequences)
     preds = predict_batch(unique_sequences, drug_ids_batch, tokenizer, model, DEVICE)
     all_drug_preds[drug_name] = preds
 
-# 3. Créer le DataFrame dense et calculer la matrice de corrélation
+# 3. Create the dense DataFrame and calculate the correlation matrix
 drug_profiles_df = pd.DataFrame(all_drug_preds, index=unique_sequences)
 drug_similarity_matrix = drug_profiles_df.corr(method='pearson')
 
-# 4. Visualiser avec un clustermap
-print("Génération du clustermap de similarité...")
+# 4. Visualize with a clustermap
+print("Generating the similarity clustermap...")
 try:
     cluster_map = sns.clustermap(
         drug_similarity_matrix,
@@ -490,27 +490,27 @@ try:
     )
     plt.setp(cluster_map.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
     plt.setp(cluster_map.ax_heatmap.get_yticklabels(), rotation=0)
-    cluster_map.fig.suptitle('Similarité Fonctionnelle des Profils de Réponse', fontsize=20, y=1.02)
+    cluster_map.fig.suptitle('Functional Similarity of Response Profiles', fontsize=20, y=1.02)
     plt.savefig(os.path.join(RESULTS_DIR, "drug_similarity_clustermap.png"), dpi=300, bbox_inches='tight')
     plt.close()
-    print("Clustermap de similarité des drogues sauvegardé.")
+    print("Drug similarity clustermap saved.")
 except Exception as e:
-    print(f"Erreur lors de la génération du clustermap : {e}. Étape ignorée.")
+    print(f"Error during clustermap generation: {e}. Step skipped.")
 
-# --- SECTION 6.0: VISUALISATION DE L'ESPACE D'EMBEDDING DES SÉQUENCES ---
-print("\n--- 6.0. Visualisation de l'Espace d'Embedding des Séquences ---")
+# --- SECTION 6.0: VISUALIZATION OF THE SEQUENCE EMBEDDING SPACE ---
+print("\n--- 6.0. Visualization of the Sequence Embedding Space ---")
 
 def get_sequence_embeddings(dataframe, tokenizer, model, device, context_col, batch_size=64):
     """
-    Extrait les embeddings du token CLS pour toutes les séquences d'un DataFrame.
+    Extracts the CLS token embeddings for all sequences in a DataFrame.
     
-    L'embedding du token CLS ([CLS]) est une représentation numérique de la séquence entière,
-    capturée par le modèle Transformer. C'est cette représentation que nous allons visualiser.
+    The CLS token embedding ([CLS]) is a numerical representation of the entire sequence,
+    captured by the Transformer model. This is the representation we will visualize.
     """
     model.eval()
     embeddings = []
     
-    # Créer un DataLoader pour extraire les embeddings
+    # Create a DataLoader to extract embeddings
     class EmbeddingDataset(Dataset):
         def __init__(self, dataframe, tokenizer, context_col):
             self.df = dataframe
@@ -532,155 +532,155 @@ def get_sequence_embeddings(dataframe, tokenizer, model, device, context_col, ba
     embedding_loader = DataLoader(embedding_dataset, batch_size=batch_size, collate_fn=default_data_collator, shuffle=False)
 
     with torch.no_grad():
-        for batch in tqdm(embedding_loader, desc="Extraction des embeddings de séquence"):
+        for batch in tqdm(embedding_loader, desc="Extracting sequence embeddings"):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
             drug_id = batch['drug_id'].to(device)
             
-            # Le forward du modèle doit retourner les embeddings CLS
+            # The model's forward pass must return the CLS embeddings
             _, cls_embeddings = model(input_ids=input_ids, attention_mask=attention_mask, drug_id=drug_id, output_hidden_states=True)
             embeddings.append(cls_embeddings.cpu().numpy())
             
     return np.vstack(embeddings)
 
-# --- Étape 1: Préparation des données pour UMAP ---
-# Pour une analyse exhaustive, nous utilisons l'intégralité du jeu de données de test.
-# Note : Cela peut être coûteux en temps de calcul et en mémoire, en particulier
-# pour l'étape UMAP. Les graphiques résultants peuvent également souffrir de
-# sur-impression ("overplotting"), rendant la visualisation plus dense.
-print("Préparation de l'intégralité du jeu de test pour l'analyse UMAP...")
+# --- Step 1: Data Preparation for UMAP ---
+# For a comprehensive analysis, we use the entire test dataset.
+# Note: This can be computationally and memory-intensive, especially
+# for the UMAP step. The resulting plots may also suffer from
+# overplotting, making the visualization denser.
+print("Preparing the entire test set for UMAP analysis...")
 sample_df_for_umap = test_df.copy().reset_index(drop=True)
 
-# --- Étape 2: Extraction des Embeddings de Séquence ---
-# Nous utilisons le modèle pour convertir chaque séquence de l'échantillon en un vecteur
-# numérique de haute dimension (l'embedding). C'est l'interprétation de la séquence par le modèle.
-print(f"Extraction des embeddings pour {len(sample_df_for_umap)} séquences pour UMAP...")
+# --- Step 2: Extraction of Sequence Embeddings ---
+# We use the model to convert each sequence from the sample into a high-dimensional
+# numerical vector (the embedding). This is the model's interpretation of the sequence.
+print(f"Extracting embeddings for {len(sample_df_for_umap)} sequences for UMAP...")
 sequence_embeddings = get_sequence_embeddings(sample_df_for_umap, tokenizer, model, DEVICE, context_col)
 
-# --- Étape 3: Réduction de Dimensionnalité avec UMAP ---
-# Les embeddings ont une dimension élevée (souvent > 768). Pour les visualiser sur un
-# graphique 2D, nous utilisons UMAP (Uniform Manifold Approximation and Projection).
-# UMAP est un algorithme qui réduit la dimensionnalité tout en essayant de préserver
-# au mieux la structure globale et les relations de voisinage des données originales.
-# En d'autres termes, des points proches dans l'espace de haute dimension le resteront en 2D.
-print("Application de UMAP pour la réduction de dimensionnalité...")
+# --- Step 3: Dimensionality Reduction with UMAP ---
+# The embeddings have a high dimension (often > 768). To visualize them on a
+# 2D plot, we use UMAP (Uniform Manifold Approximation and Projection).
+# UMAP is an algorithm that reduces dimensionality while trying to preserve
+# the global structure and neighborhood relationships of the original data as much as possible.
+# In other words, points that are close in the high-dimensional space will remain so in 2D.
+print("Applying UMAP for dimensionality reduction...")
 umap_reducer = UMAP(n_components=2, random_state=SEED)
 reduced_embeddings = umap_reducer.fit_transform(sequence_embeddings)
 
 sample_df_for_umap['umap_x'] = reduced_embeddings[:, 0]
 sample_df_for_umap['umap_y'] = reduced_embeddings[:, 1]
 
-# --- Étape 4: Visualisation et Interprétation ---
-# Nous créons plusieurs graphiques UMAP en colorant les points selon différentes
-# caractéristiques. Cela nous aide à comprendre comment le modèle organise
-# l'information dans son espace latent.
-print("Génération des graphiques UMAP...")
+# --- Step 4: Visualization and Interpretation ---
+# We create several UMAP plots by coloring the points according to different
+# characteristics. This helps us understand how the model organizes
+# information in its latent space.
+print("Generating UMAP plots...")
 
-# Plot 1: Coloration par valeur réelle de RT
-# Objectif : Voir si l'organisation spatiale des embeddings est corrélée à la cible de prédiction.
-# Interprétation attendue : On espère voir un gradient de couleur, indiquant que le modèle
-# place les séquences à faible et haute efficacité de readthrough dans des régions distinctes.
+# Plot 1: Coloring by actual RT value
+# Objective: To see if the spatial organization of embeddings correlates with the prediction target.
+# Expected interpretation: We hope to see a color gradient, indicating that the model
+# places sequences with low and high readthrough efficiency in distinct regions.
 plt.figure(figsize=(12, 10))
 sns.scatterplot(
     data=sample_df_for_umap,
     x='umap_x',
     y='umap_y',
-    hue='RT', # Colorer par la valeur réelle de RT
+    hue='RT', # Color by the actual RT value
     palette='viridis',
     s=10,
     alpha=0.7
 )
-plt.title('UMAP des Embeddings de Séquence (Coloré par RT Réel)', fontsize=18)
+plt.title('UMAP of Sequence Embeddings (Colored by Actual RT)', fontsize=18)
 plt.xlabel('UMAP Dimension 1', fontsize=14)
 plt.ylabel('UMAP Dimension 2', fontsize=14)
-plt.legend(title='RT Réel', fontsize=10, title_fontsize=12)
+plt.legend(title='Actual RT', fontsize=10, title_fontsize=12)
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_rt.png"), dpi=300)
 plt.close()
-print("UMAP par RT sauvegardé.")
+print("UMAP by RT saved.")
 
-# Plot 2: Coloration par type de codon stop
-# Objectif : Vérifier si le modèle a appris de manière non-supervisée des caractéristiques
-# biologiques fondamentales et évidentes des séquences.
-# Interprétation attendue : Des clusters très nets et séparés pour chaque type de codon stop (UAA, UAG, UGA)
-# seraient une preuve éclatante que le modèle a capturé cette information essentielle.
+# Plot 2: Coloring by stop codon type
+# Objective: To check if the model has learned fundamental and obvious biological
+# characteristics of the sequences in an unsupervised manner.
+# Expected interpretation: Very clear and separate clusters for each stop codon type (UAA, UAG, UGA)
+# would be striking proof that the model has captured this essential information.
 if 'stop_type' in sample_df_for_umap.columns:
     plt.figure(figsize=(12, 10))
     sns.scatterplot(
         data=sample_df_for_umap,
         x='umap_x',
         y='umap_y',
-        hue='stop_type', # Colorer par type de codon stop
-        palette='tab10', # Une palette discrète pour les catégories
+        hue='stop_type', # Color by stop codon type
+        palette='tab10', # A discrete palette for categories
         s=10,
         alpha=0.7
     )
-    plt.title('UMAP des Embeddings de Séquence (Coloré par Type de Codon Stop)', fontsize=18)
+    plt.title('UMAP of Sequence Embeddings (Colored by Stop Codon Type)', fontsize=18)
     plt.xlabel('UMAP Dimension 1', fontsize=14)
     plt.ylabel('UMAP Dimension 2', fontsize=14)
-    plt.legend(title='Type de Codon Stop', fontsize=10, title_fontsize=12)
+    plt.legend(title='Stop Codon Type', fontsize=10, title_fontsize=12)
     plt.tight_layout()
     plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_stop_type.png"), dpi=300)
     plt.close()
-    print("UMAP par type de codon stop sauvegardé.")
+    print("UMAP by stop codon type saved.")
 else:
-    print("La colonne 'stop_type' n'est pas présente dans le DataFrame pour la visualisation UMAP.")
+    print("The 'stop_type' column is not present in the DataFrame for UMAP visualization.")
 
-# Plot 3: Coloration par médicament
-# Objectif : Comprendre si l'embedding de la séquence est universel ou spécifique à un médicament.
-# Interprétation attendue : Un mélange des couleurs (médicaments) est un bon signe.
-# Cela signifierait que le modèle apprend une représentation générale de la séquence (sa "lisibilité"),
-# indépendamment du médicament, qui est ensuite combinée à l'embedding du médicament dans
-# la tête de régression pour la prédiction finale.
+# Plot 3: Coloring by drug
+# Objective: To understand if the sequence embedding is universal or specific to a drug.
+# Expected interpretation: A mix of colors (drugs) is a good sign.
+# This would mean that the model learns a general representation of the sequence (its "readability"),
+# independent of the drug, which is then combined with the drug embedding in
+# the regression head for the final prediction.
 plt.figure(figsize=(12, 10))
 sns.scatterplot(
     data=sample_df_for_umap,
     x='umap_x',
     y='umap_y',
-    hue='drug', # Colorer par médicament
+    hue='drug', # Color by drug
     palette=drug_color_map,
     s=10,
     alpha=0.7
 )
-plt.title('UMAP des Embeddings de Séquence (Coloré par Médicament)', fontsize=18)
+plt.title('UMAP of Sequence Embeddings (Colored by Drug)', fontsize=18)
 plt.xlabel('UMAP Dimension 1', fontsize=14)
 plt.ylabel('UMAP Dimension 2', fontsize=14)
-plt.legend(title='Médicament', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., fontsize=10, title_fontsize=12)
+plt.legend(title='Drug', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., fontsize=10, title_fontsize=12)
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_drug.png"), dpi=300)
 plt.close()
-print("UMAP par médicament sauvegardé.")
+print("UMAP by drug saved.")
 
 
-# --- SECTION 6.1: VISUALISATION DE L'ESPACE D'EMBEDDING DES MÉDICAMENTS ---
-print("\n--- 6.1. Visualisation de l'Espace d'Embedding des Médicaments ---")
+# --- SECTION 6.1: VISUALIZATION OF THE DRUG EMBEDDING SPACE ---
+print("\n--- 6.1. Visualization of the Drug Embedding Space ---")
 
-# --- Étape 1: Extraction des Embeddings de Médicaments ---
-# Les embeddings sont les poids de la couche `drug_embedding` du modèle.
-# Chaque ligne de cette matrice de poids est le vecteur appris pour un médicament.
-print("Extraction des embeddings de médicaments depuis la couche du modèle...")
+# --- Step 1: Extraction of Drug Embeddings ---
+# The embeddings are the weights of the `drug_embedding` layer of the model.
+# Each row of this weight matrix is the learned vector for a drug.
+print("Extracting drug embeddings from the model layer...")
 drug_embeddings = model.drug_embedding.weight.detach().cpu().numpy()
 
-# --- Étape 2: Réduction de Dimensionnalité avec UMAP ---
-# Nous appliquons UMAP sur ces embeddings pour les projeter en 2D.
-print("Application de UMAP pour la réduction de dimensionnalité des embeddings de médicaments...")
-# Ajustement des paramètres UMAP pour un petit nombre de points (médicaments)
-# n_neighbors doit être inférieur au nombre de points.
+# --- Step 2: Dimensionality Reduction with UMAP ---
+# We apply UMAP on these embeddings to project them into 2D.
+print("Applying UMAP for dimensionality reduction of drug embeddings...")
+# Adjusting UMAP parameters for a small number of points (drugs)
+# n_neighbors must be less than the number of points.
 umap_reducer_drugs = UMAP(n_components=2, random_state=SEED, n_neighbors=min(NUM_DRUGS - 1, 15), min_dist=0.1)
 reduced_drug_embeddings = umap_reducer_drugs.fit_transform(drug_embeddings)
 
-# --- Étape 3: Création d'un DataFrame pour la Visualisation ---
-# Nous assemblons les résultats dans un DataFrame pour une manipulation facile avec Seaborn/Matplotlib.
+# --- Step 3: Creation of a DataFrame for Visualization ---
+# We assemble the results into a DataFrame for easy manipulation with Seaborn/Matplotlib.
 drug_umap_df = pd.DataFrame({
     'umap_x': reduced_drug_embeddings[:, 0],
     'umap_y': reduced_drug_embeddings[:, 1],
-    'drug_name': [id_to_drug[i] for i in range(NUM_DRUGS)] # Utiliser le mappage id -> nom
+    'drug_name': [id_to_drug[i] for i in range(NUM_DRUGS)] # Use the id -> name mapping
 })
 
-# --- Étape 4: Visualisation et Annotation ---
-# Création du nuage de points. Chaque point est un médicament.
-# Nous annotons chaque point avec son nom pour l'identification.
-print("Génération du graphique UMAP pour l'espace d'embedding des médicaments...")
+# --- Step 4: Visualization and Annotation ---
+# Creation of the scatter plot. Each point is a drug.
+# We annotate each point with its name for identification.
+print("Generating the UMAP plot for the drug embedding space...")
 plt.figure(figsize=(14, 12))
 colors_for_plot = drug_umap_df['drug_name'].map(drug_color_map)
 sns.scatterplot(
@@ -688,75 +688,75 @@ sns.scatterplot(
     x='umap_x',
     y='umap_y',
     c=colors_for_plot,
-    s=200, # Taille des points plus grande pour la lisibilité
+    s=200, # Larger point size for readability
     alpha=0.8,
     edgecolor='k',
     linewidth=1
 )
 
-# Ajout des annotations (noms des médicaments)
+# Adding annotations (drug names)
 for i, row in drug_umap_df.iterrows():
     plt.text(row['umap_x'] + 0.05, row['umap_y'], row['drug_name'], fontsize=12, weight='bold')
 
-plt.title("Espace d'Embedding des Médicaments (visualisé avec UMAP)", fontsize=20, pad=20)
+plt.title("Drug Embedding Space (visualized with UMAP)", fontsize=20, pad=20)
 plt.xlabel("UMAP Dimension 1", fontsize=16)
 plt.ylabel("UMAP Dimension 2", fontsize=16)
 plt.grid(True, which='both', linestyle='--', linewidth=0.5)
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "drug_embedding_space_umap.png"), dpi=300)
 plt.close()
-print("Graphique UMAP de l'espace d'embedding des médicaments sauvegardé.")
+print("UMAP plot of the drug embedding space saved.")
 
 
 # --- SECTION 7.0: IN-SILICO SATURATION MUTAGENESIS ---
-print("\n--- 7.0. Analyse par Mutagénèse Saturationnelle In Silico ---")
+print("\n--- 7.0. In Silico Saturation Mutagenesis Analysis ---")
 
 def perform_saturation_mutagenesis(sequence, drug_id, model, tokenizer, device):
     """
-    Effectue une mutagénèse saturationnelle sur une séquence donnée pour une drogue spécifique.
-    Calcule l'impact de chaque mutation possible en dehors du codon stop.
+    Performs saturation mutagenesis on a given sequence for a specific drug.
+    Calculates the impact of each possible mutation outside the stop codon.
     """
     nucleotides = ['A', 'C', 'G', 'T']
     mutagenesis_results = []
 
-    # 1. Obtenir la prédiction pour la séquence de référence (wild-type)
-    wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)[0]
+    # 1. Get the prediction for the reference sequence (wild-type)
+    wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)
     
-    # Gérer le cas où la prédiction de base est nulle pour éviter la division par zéro
+    # Handle the case where the base prediction is zero to avoid division by zero
     if wt_pred == 0:
-        wt_pred = 1e-9 # Petite valeur pour éviter la division par zéro
-
-    # 2. Déterminer les positions du codon stop à ignorer
-    # Pour une séquence de type 'NNN...STOP...NNN', le stop est au centre.
+        wt_pred = 1e-9 # Small value to avoid division by zero
+    
+    # 2. Determine the positions of the stop codon to ignore
+    # For a sequence of type 'NNN...STOP...NNN', the stop is in the center.
     n_context = (len(sequence) - 3) // 2
     stop_start_index = n_context
     
-    # 3. Itérer sur chaque position et chaque mutation possible
+    # 3. Iterate over each position and each possible mutation
     for position in tqdm(range(len(sequence)), desc=f"Mutating sequence for drug_id {drug_id}"):
-        # Ignorer les positions du codon stop
+        # Ignore the positions of the stop codon
         if stop_start_index <= position < stop_start_index + 3:
             continue
             
         original_nucleotide = sequence[position]
         
         for mutated_nucleotide in nucleotides:
-            # Pas besoin de tester la "mutation" vers le même nucléotide
+            # No need to test the "mutation" to the same nucleotide
             if original_nucleotide == mutated_nucleotide:
                 log2_fold_change = 0.0
             else:
-                # Créer la séquence mutée
+                # Create the mutated sequence
                 mutated_sequence = list(sequence)
                 mutated_sequence[position] = mutated_nucleotide
                 mutated_sequence = "".join(mutated_sequence)
                 
-                # Obtenir la prédiction pour la séquence mutée
-                mutant_pred = predict_batch([mutated_sequence], [drug_id], tokenizer, model, device)[0]
+                # Get the prediction for the mutated sequence
+                mutant_pred = predict_batch([mutated_sequence], [drug_id], tokenizer, model, device)
                 
-                # Calculer le log2 fold change
+                # Calculate the log2 fold change
                 log2_fold_change = np.log2(mutant_pred / wt_pred)
 
             mutagenesis_results.append({
-                'position': position - n_context, # Centrer la position 0 sur le codon stop
+                'position': position - n_context, # Center position 0 on the stop codon
                 'original_nucleotide': original_nucleotide,
                 'mutated_nucleotide': mutated_nucleotide,
                 'log2_fold_change': log2_fold_change
@@ -766,12 +766,12 @@ def perform_saturation_mutagenesis(sequence, drug_id, model, tokenizer, device):
 
 def plot_mutagenesis_heatmap(df, title, filename, reference_sequence):
     """
-    Génère et sauvegarde une heatmap à partir des résultats de la mutagénèse.
+    Generates and saves a heatmap from the mutagenesis results.
 
-    L'échelle de couleur représente le log2 fold change de l'efficacité du readthrough (RT) :
-    - 0 (blanc) : Aucun impact.
-    - > 0 (rouge) : Augmentation de l'efficacité (ex: +1 = 2x plus efficace).
-    - < 0 (bleu) : Diminution de l'efficacité (ex: -1 = 2x moins efficace).
+    The color scale represents the log2 fold change of readthrough efficiency (RT):
+    - 0 (white): No impact.
+    - > 0 (red): Increased efficiency (e.g., +1 = 2x more efficient).
+    - < 0 (blue): Decreased efficiency (e.g., -1 = 2x less efficient).
     """
     heatmap_data = df.pivot_table(
         index='mutated_nucleotide',
@@ -779,87 +779,87 @@ def plot_mutagenesis_heatmap(df, title, filename, reference_sequence):
         values='log2_fold_change'
     )
     
-    # --- CORRECTION DU BUG DE TRI ---
-    # 1. Convertir les colonnes (positions) en entiers pour un tri numérique.
+    # --- SORTING BUG FIX ---
+    # 1. Convert columns (positions) to integers for numerical sorting.
     numeric_columns = sorted([int(c) for c in heatmap_data.columns])
     
-    # 2. Réindexer le DataFrame pour forcer l'ordre numérique correct.
+    # 2. Reindex the DataFrame to force the correct numerical order.
     heatmap_data = heatmap_data.reindex(columns=numeric_columns)
-    # --- FIN DE LA CORRECTION ---
+    # --- END OF FIX ---
 
-    # S'assurer de l'ordre canonique des nucléotides sur l'axe Y
+    # Ensure canonical order of nucleotides on the Y-axis
     heatmap_data = heatmap_data.reindex(['A', 'C', 'G', 'T'])
     
     plt.figure(figsize=(20, 6))
     heatmap = sns.heatmap(
         heatmap_data,
-        cmap='coolwarm', # Palette divergente: bleu (négatif), blanc (neutre), rouge (positif)
+        cmap='coolwarm', # Diverging palette: blue (negative), white (neutral), red (positive)
         center=0,
         annot=True,
         fmt=".2f",
         linewidths=.5
     )
-    heatmap.collections[0].colorbar.set_label("log2 Fold Change", rotation=270, labelpad=20)
-    full_title = f"{title}\nSéquence de référence: {reference_sequence}"
+    heatmap.collections.colorbar.set_label("log2 Fold Change", rotation=270, labelpad=20)
+    full_title = f"{title}\nReference sequence: {reference_sequence}"
     plt.title(full_title, fontsize=16, pad=20)
-    plt.xlabel("Position (relative au début du codon stop)", fontsize=12)
-    plt.ylabel("Mutation vers", fontsize=12)
+    plt.xlabel("Position (relative to the start of the stop codon)", fontsize=12)
+    plt.ylabel("Mutation to", fontsize=12)
     plt.tight_layout()
     plt.savefig(filename, dpi=300)
     plt.close()
-    print(f"Heatmap de mutagénèse sauvegardée dans '{filename}'.")
+    print(f"Mutagenesis heatmap saved in '{filename}'.")
 
-# --- Logique principale de l'analyse ---
-# Définir les drogues et les types de codons stop à analyser
+# --- Main analysis logic ---
+# Define the drugs and stop codon types to analyze
 drugs_to_analyze = ['Gentamicin', 'G418', 'DAP']
 stop_types_to_analyze = ['uga', 'uag', 'uaa']
 
 for drug_name in drugs_to_analyze:
     if drug_name not in drug_to_id:
-        print(f"Médicament '{drug_name}' non trouvé, ignoré.")
+        print(f"Drug '{drug_name}' not found, skipped.")
         continue
         
     drug_id = drug_to_id[drug_name]
     drug_df = test_df[test_df['drug'] == drug_name]
     
     for stop_type in stop_types_to_analyze:
-        # 1. Sélectionner la séquence de référence la plus performante pour ce combo
+        # 1. Select the best performing reference sequence for this combo
         reference_df = drug_df[drug_df['stop_type'] == stop_type]
         if reference_df.empty:
-            print(f"Aucune séquence trouvée pour {drug_name} avec codon stop {stop_type}. Ignoré.")
+            print(f"No sequence found for {drug_name} with stop codon {stop_type}. Skipped.")
             continue
         
-        # Trier par prédiction pour trouver la meilleure séquence
+        # Sort by prediction to find the best sequence
         reference_sequence = reference_df.loc[reference_df['preds'].idxmax()][context_col]
         
-        print(f"\nAnalyse de mutagénèse pour {drug_name} sur le codon {stop_type}...")
-        print(f"Séquence de référence : {reference_sequence}")
+        print(f"\nMutagenesis analysis for {drug_name} on codon {stop_type}...")
+        print(f"Reference sequence: {reference_sequence}")
         
-        # 2. Effectuer la mutagénèse
+        # 2. Perform mutagenesis
         mutagenesis_df = perform_saturation_mutagenesis(reference_sequence, drug_id, model, tokenizer, DEVICE)
         
-        # 3. Générer la heatmap
-        plot_title = f"Impact Mutationnel autour du codon {stop_type} pour {drug_name}"
+        # 3. Generate the heatmap
+        plot_title = f"Mutational Impact around the {stop_type} codon for {drug_name}"
         output_filename = os.path.join(RESULTS_DIR, f"saturation_mutagenesis_heatmap_{drug_name}_{stop_type}.png")
         plot_mutagenesis_heatmap(mutagenesis_df, plot_title, output_filename, reference_sequence)
 
-print("\n--- Analyse de mutagénèse terminée ---")
+print("\n--- Mutagenesis analysis completed ---")
 
-# --- SECTION 8.0: ANALYSE D'ÉPISTASIE PAR DOUBLE MUTAGENÈSE ---
-print("\n--- 8.0. Analyse d'Épistasie par Double Mutagenèse In Silico ---")
+# --- SECTION 8.0: EPISTASIS ANALYSIS BY DOUBLE MUTAGENESIS ---
+print("\n--- 8.0. Epistasis Analysis by In Silico Double Mutagenesis ---")
 
 def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
     """
-    Calcule les scores d'épistasie pour les paires de mutations dans une séquence donnée.
+    Calculates epistasis scores for pairs of mutations in a given sequence.
     """
     nucleotides = ['A', 'C', 'G', 'T']
     
-    # 1. Calculer la prédiction de base (WT)
-    wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)[0]
+    # 1. Calculate the base prediction (WT)
+    wt_pred = predict_batch([sequence], [drug_id], tokenizer, model, device)
     if wt_pred == 0: wt_pred = 1e-9
     log_wt_pred = np.log2(wt_pred)
 
-    # 2. Calculer les effets de toutes les mutations simples
+    # 2. Calculate the effects of all single mutations
     single_mutant_effects = {}
     n_context = (len(sequence) - 3) // 2
     stop_start_index = n_context
@@ -873,16 +873,16 @@ def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
             
             mut_seq = list(sequence)
             mut_seq[pos] = new_nuc
-            mut_pred = predict_batch(["".join(mut_seq)], [drug_id], tokenizer, model, device)[0]
+            mut_pred = predict_batch(["".join(mut_seq)], [drug_id], tokenizer, model, device)
             if mut_pred == 0: mut_pred = 1e-9
             
             effect = np.log2(mut_pred) - log_wt_pred
             single_mutant_effects[(pos, new_nuc)] = effect
 
-    # 3. Calculer les effets des doubles mutations et l'épistasie
+    # 3. Calculate the effects of double mutations and epistasis
     epistasis_results = []
     
-    # Créer des paires de positions uniques
+    # Create unique pairs of positions
     position_pairs = list(combinations(context_indices, 2))
 
     for pos1, pos2 in tqdm(position_pairs, desc="Calculating double mutations"):
@@ -894,23 +894,23 @@ def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
             for new_nuc2 in nucleotides:
                 if original_nuc2 == new_nuc2: continue
 
-                # Créer la séquence doublement mutée
+                # Create the doubly mutated sequence
                 double_mut_seq = list(sequence)
                 double_mut_seq[pos1] = new_nuc1
                 double_mut_seq[pos2] = new_nuc2
                 
-                double_mut_pred = predict_batch(["".join(double_mut_seq)], [drug_id], tokenizer, model, device)[0]
+                double_mut_pred = predict_batch(["".join(double_mut_seq)], [drug_id], tokenizer, model, device)
                 if double_mut_pred == 0: double_mut_pred = 1e-9
                 
-                # Effet observé du double mutant
+                # Observed effect of the double mutant
                 observed_effect = np.log2(double_mut_pred) - log_wt_pred
                 
-                # Effet attendu (additif)
+                # Expected (additive) effect
                 effect1 = single_mutant_effects.get((pos1, new_nuc1), 0)
                 effect2 = single_mutant_effects.get((pos2, new_nuc2), 0)
                 expected_effect = effect1 + effect2
                 
-                # Score d'épistasie
+                # Epistasis score
                 epistasis_score = observed_effect - expected_effect
                 
                 epistasis_results.append({
@@ -923,39 +923,39 @@ def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
 
 def plot_epistasis_heatmap(df, title, filename, reference_sequence):
     """
-    Génère une heatmap des scores d'épistasie, en s'assurant que les axes sont
-    triés numériquement par position de mutation.
+    Generates a heatmap of epistasis scores, ensuring that the axes are
+    sorted numerically by mutation position.
     """
     if df.empty:
-        print("Le DataFrame d'épistasie est vide. Impossible de générer la heatmap.")
+        print("The epistasis DataFrame is empty. Cannot generate the heatmap.")
         return
         
-    # --- CORRECTION DU BUG DE TRI ---
-    # 1. Fonction utilitaire pour extraire la position numérique du label.
+    # --- SORTING BUG FIX ---
+    # 1. Utility function to extract the numerical position from the label.
     def get_pos_from_label(label):
         try:
-            # Extrait la partie avant le ':' et la convertit en entier.
-            return int(label.split(':')[0])
+            # Extracts the part before the ':' and converts it to an integer.
+            return int(label.split(':'))
         except (ValueError, IndexError):
-            # Retourne une grande valeur pour les labels mal formés pour les trier à la fin.
+            # Returns a large value for malformed labels to sort them at the end.
             return float('inf')
 
-    # 2. Obtenir tous les labels de mutation uniques et les trier numériquement.
+    # 2. Get all unique mutation labels and sort them numerically.
     all_labels = pd.unique(df[['mutation1', 'mutation2']].values.ravel('K'))
-    # Filtrer les labels potentiellement nuls ou mal formés pour éviter les erreurs.
+    # Filter out potentially null or malformed labels to avoid errors.
     all_labels = [label for label in all_labels if isinstance(label, str) and ':' in label]
     sorted_labels = sorted(all_labels, key=get_pos_from_label)
     
-    # 3. Créer la table pivot et la réindexer avec les labels triés pour forcer le bon ordre.
+    # 3. Create the pivot table and reindex it with the sorted labels to force the correct order.
     epistasis_matrix = df.pivot_table(index='mutation1', columns='mutation2', values='epistasis_score')
     epistasis_matrix = epistasis_matrix.reindex(index=sorted_labels, columns=sorted_labels)
-    # --- FIN DE LA CORRECTION ---
+    # --- END OF FIX ---
 
-    # Rendre la matrice symétrique pour une meilleure visualisation.
-    # combine_first remplit les NaN d'une matrice avec les valeurs de l'autre.
+    # Make the matrix symmetric for better visualization.
+    # combine_first fills the NaNs of one matrix with the values of the other.
     epistasis_matrix = epistasis_matrix.combine_first(epistasis_matrix.T)
     
-    # Remplir la diagonale avec 0 car une mutation n'interagit pas avec elle-même dans ce contexte.
+    # Fill the diagonal with 0 because a mutation does not interact with itself in this context.
     np.fill_diagonal(epistasis_matrix.values, 0)
 
     plt.figure(figsize=(20, 18))
@@ -963,59 +963,59 @@ def plot_epistasis_heatmap(df, title, filename, reference_sequence):
         epistasis_matrix,
         cmap='coolwarm',
         center=0,
-        annot=False, # L'annotation surchargerait complètement le graphique.
-        square=True, # Assurer que les cellules sont carrées pour une meilleure lisibilité.
+        annot=False, # Annotation would completely overload the plot.
+        square=True, # Ensure cells are square for better readability.
         linewidths=.1
     )
-    heatmap.collections[0].colorbar.set_label("Epistasis Score", rotation=270, labelpad=20)
-    full_title = f"{title}\nSéquence de référence: {reference_sequence}"
+    heatmap.collections.colorbar.set_label("Epistasis Score", rotation=270, labelpad=20)
+    full_title = f"{title}\nReference sequence: {reference_sequence}"
     plt.title(full_title, fontsize=20, pad=20)
     plt.xlabel("Mutation", fontsize=16)
     plt.ylabel("Mutation", fontsize=16)
     
-    # Améliorer la lisibilité des labels des axes.
+    # Improve readability of axis labels.
     plt.xticks(rotation=90, fontsize=8)
     plt.yticks(rotation=0, fontsize=8)
     
     plt.tight_layout()
     plt.savefig(filename, dpi=300)
     plt.close()
-    print(f"Heatmap d'épistasie sauvegardée dans '{filename}'.")
+    print(f"Epistasis heatmap saved in '{filename}'.")
 
-# --- Logique principale de l'analyse d'épistasie (généralisée) ---
-print("\nLancement de l'analyse d'épistasie généralisée...")
+# --- Main logic of the generalized epistasis analysis ---
+print("\nStarting generalized epistasis analysis...")
 
-# Définir les types de codons stop à analyser
+# Define the stop codon types to analyze
 stop_types_to_analyze = ['uaa', 'uag', 'uga']
 
-# Boucler sur chaque médicament et chaque type de codon stop
+# Loop over each drug and each stop codon type
 for drug_name in drug_to_id.keys():
     drug_id = drug_to_id[drug_name]
     drug_df = test_df[test_df['drug'] == drug_name]
     
     for stop_type in stop_types_to_analyze:
-        # Sélectionner la séquence de référence la plus performante pour ce combo
+        # Select the best performing reference sequence for this combo
         reference_df = drug_df[drug_df['stop_type'] == stop_type]
         
         if reference_df.empty:
-            print(f"Aucune séquence trouvée pour {drug_name} avec codon stop {stop_type}. Analyse d'épistasie ignorée.")
+            print(f"No sequence found for {drug_name} with stop codon {stop_type}. Epistasis analysis skipped.")
             continue
         
-        # Trier par prédiction pour trouver la meilleure séquence
+        # Sort by prediction to find the best sequence
         reference_sequence = reference_df.loc[reference_df['preds'].idxmax()][context_col]
         
-        print(f"\nAnalyse d'épistasie pour {drug_name} sur le codon {stop_type}...")
-        print(f"Séquence de référence : {reference_sequence}")
+        print(f"\nEpistasis analysis for {drug_name} on codon {stop_type}...")
+        print(f"Reference sequence: {reference_sequence}")
         
-        # Effectuer l'analyse d'épistasie
+        # Perform epistasis analysis
         epistasis_df = calculate_epistasis(reference_sequence, drug_id, model, tokenizer, DEVICE)
         
-        # Générer la heatmap
+        # Generate the heatmap
         if not epistasis_df.empty:
-            plot_title = f"Analyse d'Épistasie pour {drug_name} (Stop: {stop_type})"
+            plot_title = f"Epistasis Analysis for {drug_name} (Stop: {stop_type})"
             output_filename = os.path.join(RESULTS_DIR, f"epistasis_heatmap_{drug_name}_{stop_type}.png")
             plot_epistasis_heatmap(epistasis_df, plot_title, output_filename, reference_sequence)
         else:
-            print(f"Le DataFrame d'épistasie est vide pour {drug_name} / {stop_type}. Aucune heatmap générée.")
+            print(f"The epistasis DataFrame is empty for {drug_name} / {stop_type}. No heatmap generated.")
 
-print("\n--- Analyse d'épistasie généralisée terminée ---")
+print("\n--- Generalized epistasis analysis completed ---")

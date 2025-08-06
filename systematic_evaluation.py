@@ -65,18 +65,18 @@ def compute_metrics_global(eval_pred):
     predictions, labels = eval_pred; predictions_inv = np.expm1(predictions); labels_inv = np.expm1(labels); predictions_inv[predictions_inv < 0] = 0
     return {"r2_score": r2_score(labels_inv, predictions_inv)}
 
-# --- Évaluation Séquentielle du Contexte ---
+# --- Sequential Context Evaluation ---
 MODEL_KEY = "NucTransformer"
 MODEL_HF_NAME = "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species"
-# *** MISE À JOUR DE LA LISTE DES CONTEXTES ***
+# *** UPDATE CONTEXT LIST ***
 CONTEXTS_TO_TEST = ['seq_context_144', 'seq_context_42', 'seq_context_18', 'seq_context_12', 'seq_context_6', 'seq_context_0']
 evaluation_log = []
 
-print(f"\n--- Évaluation des contextes pour le modèle: {MODEL_KEY} ---")
+print(f"\n--- Evaluating contexts for model: {MODEL_KEY} ---")
 context_scores = {}
 for context in CONTEXTS_TO_TEST:
     run_name = f"{MODEL_KEY}-{context}-full_finetune"
-    print(f"\n--- Test du contexte: {context} ---")
+    print(f"\n--- Testing context: {context} ---")
     
     tokenizer = AutoTokenizer.from_pretrained(MODEL_HF_NAME, trust_remote_code=True)
     train_dataset = PTCDataset(train_df, tokenizer, context)
@@ -109,11 +109,11 @@ for context in CONTEXTS_TO_TEST:
     del model, trainer, tokenizer
     torch.cuda.empty_cache()
 
-# --- Finalisation et Sauvegarde ---
+# --- Finalization and Saving ---
 valid_context_scores = {k: v for k, v in context_scores.items() if v > -float('inf')}
-if not valid_context_scores: raise RuntimeError("Toutes les évaluations de contexte ont échoué.")
+if not valid_context_scores: raise RuntimeError("All context evaluations failed.")
 best_context = max(valid_context_scores, key=valid_context_scores.get)
-print(f"\n===> MEILLEUR CONTEXTE TROUVÉ: {best_context} (R2={valid_context_scores[best_context]:.4f})")
+print(f"\n===> BEST CONTEXT FOUND: {best_context} (R2={valid_context_scores[best_context]:.4f})")
 
 final_best_config = {
     "model_name": MODEL_KEY,
@@ -122,11 +122,11 @@ final_best_config = {
     "best_validation_R2": valid_context_scores[best_context]
 }
 
-print("\n--- CONFIGURATION FINALE OPTIMALE ---")
+print("\n--- FINAL OPTIMAL CONFIGURATION ---")
 print(json.dumps(final_best_config, indent=2))
 log_df = pd.DataFrame(evaluation_log)
 log_df.to_csv(os.path.join(RESULTS_DIR, "context_evaluation_log.csv"), index=False)
 final_log_df = pd.DataFrame([final_best_config])
 final_log_df.to_csv(os.path.join(RESULTS_DIR, "systematic_evaluation_log.csv"), index=False)
-print("\nRecherche du contexte terminée. La meilleure configuration a été sauvegardée pour l'étape suivante.")
+print("\nContext search finished. The best configuration has been saved for the next step.")
 print("--- END OF PART 2a ---")

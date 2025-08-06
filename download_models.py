@@ -1,25 +1,25 @@
 # download_models.py
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 
-print("Début du pré-téléchargement des modèles et tokenizers...")
+print("Starting pre-download of models and tokenizers...")
 
 MODELS_TO_DOWNLOAD = {
     "NucTransformer": "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species",
 }
 
 for model_key, model_name in MODELS_TO_DOWNLOAD.items():
-    print(f"Téléchargement de {model_key} ({model_name})...")
+    print(f"Downloading {model_key} ({model_name})...")
     try:
-        # Télécharge et met en cache le tokenizer
+        # Download and cache the tokenizer
         AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        print(f"  -> Tokenizer pour {model_key} téléchargé.")
+        print(f"  -> Tokenizer for {model_key} downloaded.")
 
-        # Télécharge et met en cache le modèle
+        # Download and cache the model
         AutoModelForMaskedLM.from_pretrained(model_name, trust_remote_code=True)
-        print(f"  -> Modèle pour {model_key} téléchargé.")
+        print(f"  -> Model for {model_key} downloaded.")
         
-        print(f"Téléchargement de {model_key} terminé avec succès.")
+        print(f"Successfully downloaded {model_key}.")
     except Exception as e:
-        print(f"ERREUR lors du téléchargement de {model_key}: {e}")
+        print(f"ERROR downloading {model_key}: {e}")
 
-print("\nTous les modèles ont été pré-téléchargés et mis en cache.")
+print("\nAll models have been pre-downloaded and cached.")

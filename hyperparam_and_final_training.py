@@ -19,10 +19,10 @@ import os
 import json
 import wandb
 
-# --- Configuration Initiale ---
-# Activer le mode hors ligne pour la compatibilité avec les clusters sans accès internet direct
+# --- Initial Configuration ---
+# Enable offline mode for compatibility with clusters without direct internet access
 os.environ["WANDB_MODE"] = "offline"
-# Définir le projet W&B pour cette étape
+# Define the W&B project for this step
 os.environ["WANDB_PROJECT"] = "ptc-hyperparameter-tuning"
 
 SEED = 42
@@ -30,7 +30,7 @@ set_seed(SEED)
 
 print("--- PART 2b: HYPERPARAMETER OPTIMIZATION AND FINAL TRAINING ---")
 
-# --- Chemins et Répertoires ---
+# --- Paths and Directories ---
 PROCESSED_DATA_DIR = "./processed_data/"
 RESULTS_DIR = "./results/"
 MODELS_DIR = "./models/"
@@ -38,16 +38,16 @@ TEMP_MODEL_DIR_HPARAM = "./temp_models_hparam/"
 
 for dir_path in [MODELS_DIR, TEMP_MODEL_DIR_HPARAM]: os.makedirs(dir_path, exist_ok=True)
 
-# --- Chargement de la meilleure configuration de l'étape 2a ---
+# --- Loading the best configuration from step 2a ---
 try:
     best_config_df = pd.read_csv(os.path.join(RESULTS_DIR, "systematic_evaluation_log.csv"))
-    best_config = best_config_df.iloc[0].to_dict()
+    best_config = best_config_df.iloc.to_dict()
 except FileNotFoundError:
-    raise FileNotFoundError("Le fichier 'systematic_evaluation_log.csv' de l'étape 2a est introuvable.")
+    raise FileNotFoundError("The 'systematic_evaluation_log.csv' file from step 2a was not found.")
 
-print(f"Meilleure Configuration Chargée: {best_config}")
+print(f"Loaded Best Configuration: {best_config}")
 
-# --- Chargement des Données ---
+# --- Data Loading ---
 train_df = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, "train_df.csv"))
 val_df = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, "val_df.csv"))
 test_df = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, "test_df.csv"))
@@ -61,7 +61,7 @@ test_df['drug_id'] = test_df['drug'].map(drug_to_id)
 MODEL_HF_NAME = "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species"
 context_col = best_config['context_column']
 
-# --- Classes et Fonctions Réutilisables ---
+# --- Reusable Classes and Functions ---
 class PTCDataset(Dataset):
     def __init__(self, dataframe, tokenizer, context_col):
         self.df = dataframe; self.tokenizer = tokenizer; self.context_col = context_col
@@ -95,8 +95,8 @@ def compute_metrics_global(eval_pred):
     predictions, labels = eval_pred; predictions_inv = np.expm1(predictions); labels_inv = np.expm1(labels); predictions_inv[predictions_inv < 0] = 0
     return {"r2_score": r2_score(labels_inv, predictions_inv), "mae": mean_absolute_error(labels_inv, predictions_inv)}
 
-# --- 2.3. Optimisation des Hyperparamètres avec Optuna et W&B ---
-print("\n--- 2.3. Lancement de l'Optimisation des Hyperparamètres ---")
+# --- 2.3. Hyperparameter Optimization with Optuna and W&B ---
+print("\n--- 2.3. Starting Hyperparameter Optimization ---")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_HF_NAME, trust_remote_code=True)
 train_dataset = PTCDataset(train_df, tokenizer, context_col)
 val_dataset = PTCDataset(val_df, tokenizer, context_col)
@@ -104,12 +104,12 @@ val_dataset = PTCDataset(val_df, tokenizer, context_col)
 def objective(trial):
     run_name = f"optuna-trial-{trial.number}"
     
-    # Définition de l'espace de recherche des hyperparamètres
+    # Define the hyperparameter search space
     training_args = TrainingArguments(
         output_dir=os.path.join(TEMP_MODEL_DIR_HPARAM, run_name),
         run_name=run_name,
         learning_rate=trial.suggest_float("learning_rate", 1e-6, 5e-5, log=True),
-        per_device_train_batch_size=trial.suggest_categorical("batch_size", [16, 32]),
+        per_device_train_batch_size=trial.suggest_categorical("batch_size",),
         num_train_epochs=8,
         weight_decay=trial.suggest_float("weight_decay", 0.0, 0.1),
         warmup_ratio=trial.suggest_float("warmup_ratio", 0.0, 0.2),
@@ -123,8 +123,8 @@ def objective(trial):
         seed=SEED
     )
     
-    head_hidden_size = trial.suggest_categorical("head_hidden_size", [128, 256, 512])
-    drug_embedding_size = trial.suggest_categorical("drug_embedding_size", [8, 16, 32])
+    head_hidden_size = trial.suggest_categorical("head_hidden_size",)
+    drug_embedding_size = trial.suggest_categorical("drug_embedding_size",)
     dropout_rate = trial.suggest_float("dropout_rate", 0.05, 0.3)
     
     model = PanDrugTransformerForTrainer(
@@ -147,36 +147,36 @@ def objective(trial):
         trainer.train()
         r2 = max([log['eval_r2_score'] for log in trainer.state.log_history if 'eval_r2_score' in log])
     except (torch.cuda.OutOfMemoryError, ValueError) as e:
-        print(f"ERREUR durant l'essai HPO {trial.number}: {e}. Essai abandonné (pruned).")
+        print(f"ERROR during HPO trial {trial.number}: {e}. Trial pruned.")
         raise optuna.exceptions.TrialPruned()
     finally:
-        wandb.finish() # S'assurer que chaque exécution W&B se termine
+        wandb.finish() # Ensure every W&B run is finished
 
     return r2
 
 study = optuna.create_study(direction="maximize")
 study.optimize(objective, n_trials=20)
 best_hyperparams = study.best_params
-print(f"Meilleurs Hyperparamètres trouvés : {best_hyperparams}")
+print(f"Best Hyperparameters found: {best_hyperparams}")
 
-# Sauvegarde des résultats de l'étude Optuna
-print("Sauvegarde du rapport d'étude Optuna en CSV...")
+# Save Optuna study results
+print("Saving Optuna study report to CSV...")
 trials_df = study.trials_dataframe()
 trials_df.to_csv(os.path.join(RESULTS_DIR, "optuna_trials_report.csv"), index=False)
-print("Rapport Optuna sauvegardé.")
+print("Optuna report saved.")
 
 with open(os.path.join(RESULTS_DIR, "best_hyperparams.json"), 'w') as f:
     json.dump(best_hyperparams, f)
 
-# --- 2.4. Entraînement du Modèle Final de Production ---
-print("\n--- 2.4. Entraînement du Modèle Final de Production ---")
+# --- 2.4. Final Production Model Training ---
+print("\n--- 2.4. Training Final Production Model ---")
 FINAL_EPOCHS = 20
 final_train_df = pd.concat([train_df, val_df], ignore_index=True)
 
 final_train_dataset = PTCDataset(final_train_df, tokenizer, context_col)
 test_dataset = PTCDataset(test_df, tokenizer, context_col)
 
-# Initialiser une exécution W&B pour l'entraînement final
+# Initialize a W&B run for the final training
 wandb.init(project="ptc-final-training", name="production-run", config=best_hyperparams, job_type="train")
 
 final_training_args = TrainingArguments(
@@ -213,25 +213,25 @@ final_trainer = Trainer(
     data_collator=default_data_collator, compute_metrics=compute_metrics_global
 )
 
-print("Lancement de l'entraînement final...")
+print("Starting final training...")
 final_trainer.train()
 
-print("Évaluation du modèle final sur le jeu de test...")
+print("Evaluating final model on the test set...")
 test_results = final_trainer.evaluate(test_dataset)
 
-# Log des métriques finales sur W&B
+# Log final metrics to W&B
 wandb.log({"final_test_metrics": test_results})
 
-print("\n--- PERFORMANCE FINALE DU MODÈLE SUR LE JEU DE TEST ---")
+print("\n--- FINAL MODEL PERFORMANCE ON TEST SET ---")
 print(f"Test R-squared: {test_results['eval_r2_score']:.4f}")
 print(f"Test MAE: {test_results['eval_mae']:.4f}")
 
 production_model_path = os.path.join(MODELS_DIR, "production_model")
 final_trainer.save_model(production_model_path)
 tokenizer.save_pretrained(production_model_path)
-print(f"Modèle de production sauvegardé dans '{production_model_path}'.")
+print(f"Production model saved to '{production_model_path}'.")
 
-# Log du modèle final comme un "artefact" sur W&B
+# Log the final model as a W&B artifact
 artifact = wandb.Artifact('production-model', type='model')
 artifact.add_dir(production_model_path)
 wandb.log_artifact(artifact)
@@ -240,4 +240,4 @@ with open(os.path.join(RESULTS_DIR, "final_test_metrics.json"), 'w') as f:
     json.dump(test_results, f)
 
 wandb.finish()
-print("--- FIN DE LA PARTIE 2b ---")
+print("--- END OF PART 2b ---")
