@@ -3,7 +3,7 @@
 #SBATCH -p publicgpu
 #SBATCH -N 1
 #SBATCH -x hpc-n932
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:4
 #SBATCH --constraint="gpuh100|gpua100|gpul40s|gpua40|gpurtx6000"
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
@@ -54,11 +54,58 @@ class PTCDataset(Dataset):
         return {"input_ids": encoding['input_ids'].flatten(), "attention_mask": encoding['attention_mask'].flatten(), "drug_id": torch.tensor(row['drug_id'], dtype=torch.long), "labels": torch.tensor(float(row['RT_transformed']), dtype=torch.float)}
 
 class PanDrugTransformerForTrainer(torch.nn.Module):
-    def __init__(self, model_name, num_drugs, head_hidden_size=256, **kwargs):
-        super().__init__(); full_model = AutoModelForMaskedLM.from_pretrained(model_name, trust_remote_code=True, **kwargs); self.base_model = full_model.base_model; self.config = self.base_model.config; self.drug_embedding = torch.nn.Embedding(num_drugs, 16); base_model_hidden_size = self.base_model.config.hidden_size; self.reg_head = torch.nn.Sequential(torch.nn.Linear(base_model_hidden_size + 16, head_hidden_size), torch.nn.ReLU(), torch.nn.Dropout(0.1), torch.nn.Linear(head_hidden_size, 1))
+    def __init__(self, model_name, num_drugs, head_hidden_size=256, drug_embed_dim=64, num_attention_heads=8, **kwargs):
+        super().__init__()
+        full_model = AutoModelForMaskedLM.from_pretrained(model_name, trust_remote_code=True, **kwargs)
+        self.base_model = full_model.base_model
+        self.config = self.base_model.config
+        
+        base_model_hidden_size = self.config.hidden_size
+        
+        # Drug embedding and projection to match sequence embedding dimension
+        self.drug_embedding = torch.nn.Embedding(num_drugs, drug_embed_dim)
+        self.query_projection = torch.nn.Linear(drug_embed_dim, base_model_hidden_size)
+        
+        # Cross-Attention Layer where drug query attends to sequence key/values
+        self.cross_attention = torch.nn.MultiheadAttention(
+            embed_dim=base_model_hidden_size,
+            num_heads=num_attention_heads,
+            batch_first=True
+        )
+        
+        # Regression Head
+        self.reg_head = torch.nn.Sequential(
+            torch.nn.Linear(base_model_hidden_size, head_hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(0.1),
+            torch.nn.Linear(head_hidden_size, 1)
+        )
+
     def forward(self, input_ids, attention_mask, drug_id, labels=None, **kwargs):
-        outputs = self.base_model(input_ids=input_ids, attention_mask=attention_mask); logits = self.reg_head(torch.cat([outputs.last_hidden_state[:, 0], self.drug_embedding(drug_id)], dim=1)).squeeze(-1); loss = None
-        if labels is not None: loss = torch.nn.MSELoss()(logits, labels)
+        # Get sequence embeddings from the base transformer
+        sequence_outputs = self.base_model(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
+        
+        # Get drug embeddings and project to query dimension
+        drug_embeds = self.drug_embedding(drug_id)
+        query = self.query_projection(drug_embeds).unsqueeze(1) # Shape: (batch, 1, hidden_size)
+        
+        # Perform cross-attention: drug embedding queries the sequence embeddings
+        # attn_output shape: (batch, 1, hidden_size)
+        attn_output, attn_weights = self.cross_attention(
+            query=query,
+            key=sequence_outputs,
+            value=sequence_outputs
+        )
+        
+        # The attended output vector is the input to the regression head
+        context_vector = attn_output.squeeze(1) # Shape: (batch, hidden_size)
+        
+        logits = self.reg_head(context_vector).squeeze(-1)
+        
+        loss = None
+        if labels is not None:
+            loss = torch.nn.MSELoss()(logits, labels)
+            
         return (loss, logits) if loss is not None else logits
 
 def compute_metrics_global(eval_pred):
