@@ -3,10 +3,12 @@
 #SBATCH -p publicgpu
 #SBATCH -N 1
 #SBATCH -x hpc-n932
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:4
 #SBATCH --constraint="gpuh100|gpua100|gpul40s|gpua40|gpurtx6000"
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
+#SBATCH --job-name=hyperparam_and_final_training
+#SBATCH --output=hyperparam_and_final_training_%j.out
 
 import pandas as pd
 import numpy as np
@@ -41,7 +43,7 @@ for dir_path in [MODELS_DIR, TEMP_MODEL_DIR_HPARAM]: os.makedirs(dir_path, exist
 # --- Loading the best configuration from step 2a ---
 try:
     best_config_df = pd.read_csv(os.path.join(RESULTS_DIR, "systematic_evaluation_log.csv"))
-    best_config = best_config_df.iloc.to_dict()
+    best_config = best_config_df.iloc[0].to_dict()
 except FileNotFoundError:
     raise FileNotFoundError("The 'systematic_evaluation_log.csv' file from step 2a was not found.")
 
@@ -72,23 +74,58 @@ class PTCDataset(Dataset):
         return {"input_ids": encoding['input_ids'].flatten(), "attention_mask": encoding['attention_mask'].flatten(), "drug_id": torch.tensor(row['drug_id'], dtype=torch.long), "labels": torch.tensor(float(row['RT_transformed']), dtype=torch.float)}
 
 class PanDrugTransformerForTrainer(torch.nn.Module):
-    def __init__(self, model_name, num_drugs, head_hidden_size=256, drug_embedding_size=16, dropout_rate=0.1, **kwargs):
+    def __init__(self, model_name, num_drugs, head_hidden_size=256, drug_embed_dim=64, num_attention_heads=8, dropout_rate=0.1, **kwargs):
         super().__init__()
         full_model = AutoModelForMaskedLM.from_pretrained(model_name, trust_remote_code=True, **kwargs)
         self.base_model = full_model.base_model
         self.config = self.base_model.config
-        self.drug_embedding = torch.nn.Embedding(num_drugs, drug_embedding_size)
-        base_model_hidden_size = self.base_model.config.hidden_size
+        
+        base_model_hidden_size = self.config.hidden_size
+        
+        # Drug embedding and projection to match sequence embedding dimension
+        self.drug_embedding = torch.nn.Embedding(num_drugs, drug_embed_dim)
+        self.query_projection = torch.nn.Linear(drug_embed_dim, base_model_hidden_size)
+        
+        # Cross-Attention Layer where drug query attends to sequence key/values
+        self.cross_attention = torch.nn.MultiheadAttention(
+            embed_dim=base_model_hidden_size,
+            num_heads=num_attention_heads,
+            batch_first=True
+        )
+        
+        # Regression Head
         self.reg_head = torch.nn.Sequential(
-            torch.nn.Linear(base_model_hidden_size + drug_embedding_size, head_hidden_size),
-            torch.nn.ReLU(), torch.nn.Dropout(dropout_rate),
+            torch.nn.Linear(base_model_hidden_size, head_hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(dropout_rate),
             torch.nn.Linear(head_hidden_size, 1)
         )
+
     def forward(self, input_ids, attention_mask, drug_id, labels=None, **kwargs):
-        outputs = self.base_model(input_ids=input_ids, attention_mask=attention_mask)
-        logits = self.reg_head(torch.cat([outputs.last_hidden_state[:, 0], self.drug_embedding(drug_id)], dim=1)).squeeze(-1)
+        # Get sequence embeddings from the base transformer
+        sequence_outputs = self.base_model(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
+        
+        # Get drug embeddings and project to query dimension
+        drug_embeds = self.drug_embedding(drug_id)
+        query = self.query_projection(drug_embeds).unsqueeze(1) # Shape: (batch, 1, hidden_size)
+        
+        # Perform cross-attention: drug embedding queries the sequence embeddings
+        # attn_output shape: (batch, 1, hidden_size)
+        attn_output, attn_weights = self.cross_attention(
+            query=query,
+            key=sequence_outputs,
+            value=sequence_outputs
+        )
+        
+        # The attended output vector is the input to the regression head
+        context_vector = attn_output.squeeze(1) # Shape: (batch, hidden_size)
+        
+        logits = self.reg_head(context_vector).squeeze(-1)
+        
         loss = None
-        if labels is not None: loss = torch.nn.MSELoss()(logits, labels)
+        if labels is not None:
+            loss = torch.nn.MSELoss()(logits, labels)
+            
         return (loss, logits) if loss is not None else logits
 
 def compute_metrics_global(eval_pred):
@@ -109,8 +146,8 @@ def objective(trial):
         output_dir=os.path.join(TEMP_MODEL_DIR_HPARAM, run_name),
         run_name=run_name,
         learning_rate=trial.suggest_float("learning_rate", 1e-6, 5e-5, log=True),
-        per_device_train_batch_size=trial.suggest_categorical("batch_size",),
-        num_train_epochs=8,
+        per_device_train_batch_size=trial.suggest_categorical("batch_size",[16, 32]),
+        num_train_epochs=12,
         weight_decay=trial.suggest_float("weight_decay", 0.0, 0.1),
         warmup_ratio=trial.suggest_float("warmup_ratio", 0.0, 0.2),
         #adam_beta2=trial.suggest_float("adam_beta2", 0.98, 0.999),
@@ -123,14 +160,17 @@ def objective(trial):
         seed=SEED
     )
     
-    head_hidden_size = trial.suggest_categorical("head_hidden_size",)
-    drug_embedding_size = trial.suggest_categorical("drug_embedding_size",)
+    drug_embed_dim = trial.suggest_categorical("drug_embed_dim",[16, 32, 64])
+    num_attention_heads = trial.suggest_categorical("num_attention_heads",[4, 8, 16])
+    head_hidden_size = trial.suggest_categorical("head_hidden_size",[256, 512, 768])
     dropout_rate = trial.suggest_float("dropout_rate", 0.05, 0.3)
     
     model = PanDrugTransformerForTrainer(
-        MODEL_HF_NAME, NUM_DRUGS, 
+        MODEL_HF_NAME,
+        NUM_DRUGS,
+        drug_embed_dim=drug_embed_dim,
+        num_attention_heads=num_attention_heads,
         head_hidden_size=head_hidden_size,
-        drug_embedding_size=drug_embedding_size,
         dropout_rate=dropout_rate
     )
     
@@ -155,7 +195,7 @@ def objective(trial):
     return r2
 
 study = optuna.create_study(direction="maximize")
-study.optimize(objective, n_trials=20)
+study.optimize(objective, n_trials=30)
 best_hyperparams = study.best_params
 print(f"Best Hyperparameters found: {best_hyperparams}")
 
@@ -200,9 +240,11 @@ final_training_args = TrainingArguments(
 )
 
 model = PanDrugTransformerForTrainer(
-    MODEL_HF_NAME, NUM_DRUGS, 
+    MODEL_HF_NAME,
+    NUM_DRUGS,
+    drug_embed_dim=best_hyperparams['drug_embed_dim'],
+    num_attention_heads=best_hyperparams['num_attention_heads'],
     head_hidden_size=best_hyperparams['head_hidden_size'],
-    drug_embedding_size=best_hyperparams['drug_embedding_size'],
     dropout_rate=best_hyperparams['dropout_rate']
 )
 try: model.base_model.gradient_checkpointing_enable()
