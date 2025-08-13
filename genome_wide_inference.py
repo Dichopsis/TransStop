@@ -4,11 +4,11 @@
 #SBATCH -N 1
 #SBATCH -x hpc-n932
 #SBATCH --gres=gpu:4
-#SBATCH --constraint="gpuh100|gpua100|gpul40s"
+#SBATCH --constraint="gpuh100"
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
-#SBATCH --job-name=PTC_Inference
-#SBATCH --output=ptc_inference_%j.out
+#SBATCH --job-name=genome_wide_inference
+#SBATCH --output=genome_wide_inference_%j.out
 
 import pandas as pd
 import numpy as np
@@ -32,43 +32,58 @@ MODELS_DIR = "./models/"
 DATA_DIR = "./data/" 
 PROD_MODEL_PATH = os.path.join(MODELS_DIR, "production_model")
 # UPDATE THIS COLUMN
-CONTEXT_COL_NAME_FROM_MODEL = "seq_context_18" 
+csv_path = os.path.join(RESULTS_DIR, "systematic_evaluation_log.csv")  # Remplace par le vrai nom de fichier
+df_context = pd.read_csv(csv_path)
+
+# Stocker la valeur de la première ligne de 'context_column' dans la variable
+CONTEXT_COL_NAME_FROM_MODEL = df_context["context_column"].iloc[0] 
 NUM_GPUS = torch.cuda.device_count()
 
 # --- Classes (must be defined at the global level for multiprocessing) ---
 
-class PanDrugTransformerForTrainer(torch.nn.Module):
-    """
-    Complete definition of the model class.
-    """
-    def __init__(self, model_name, num_drugs, head_hidden_size=256, drug_embedding_size=16, dropout_rate=0.1, **kwargs):
+class PanDrugTransformer(torch.nn.Module):
+    def __init__(self, model_name, num_drugs, head_hidden_size=256, drug_embed_dim=64, num_attention_heads=8, dropout_rate=0.1, **kwargs):
         super().__init__()
         full_model = AutoModelForMaskedLM.from_pretrained(model_name, trust_remote_code=True, **kwargs)
         self.base_model = full_model.base_model
         self.config = self.base_model.config
-        self.drug_embedding = torch.nn.Embedding(num_drugs, drug_embedding_size)
-        base_model_hidden_size = self.base_model.config.hidden_size
+        
+        base_model_hidden_size = self.config.hidden_size
+        
+        self.drug_embedding = torch.nn.Embedding(num_drugs, drug_embed_dim)
+        self.query_projection = torch.nn.Linear(drug_embed_dim, base_model_hidden_size)
+        
+        self.cross_attention = torch.nn.MultiheadAttention(
+            embed_dim=base_model_hidden_size,
+            num_heads=num_attention_heads,
+            batch_first=True
+        )
+        
         self.reg_head = torch.nn.Sequential(
-            torch.nn.Linear(base_model_hidden_size + drug_embedding_size, head_hidden_size),
+            torch.nn.Linear(base_model_hidden_size, head_hidden_size),
             torch.nn.ReLU(),
             torch.nn.Dropout(dropout_rate),
             torch.nn.Linear(head_hidden_size, 1)
         )
-    
+
     def forward(self, input_ids, attention_mask, drug_id, labels=None, **kwargs):
-        output_attentions = kwargs.get("output_attentions", False)
-        base_model_outputs = self.base_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            output_attentions=output_attentions
-        )
-        cls_embedding = base_model_outputs.last_hidden_state[:, 0]
-        drug_emb = self.drug_embedding(drug_id)
-        combined_embedding = torch.cat([cls_embedding, drug_emb], dim=1)
-        logits = self.reg_head(combined_embedding).squeeze(-1)
+        sequence_outputs = self.base_model(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
         
-        if output_attentions:
-            return logits, base_model_outputs.attentions
+        drug_embeds = self.drug_embedding(drug_id)
+        query = self.query_projection(drug_embeds).unsqueeze(1)
+        
+        attn_output, _ = self.cross_attention(
+            query=query,
+            key=sequence_outputs,
+            value=sequence_outputs
+        )
+        
+        context_vector = attn_output.squeeze(1)
+        logits = self.reg_head(context_vector).squeeze(-1)
+        
+        if labels is not None:
+            loss = torch.nn.MSELoss()(logits, labels)
+            return (loss, logits)
         return logits
 
 class InferenceDataset(Dataset):
@@ -99,10 +114,12 @@ def run_inference_worker(gpu_id, data_chunk, drug_to_id, best_hyperparams):
     # Each worker loads its own copy of the model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained(PROD_MODEL_PATH, trust_remote_code=True)
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-    model = PanDrugTransformerForTrainer(
-        "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species", len(drug_to_id), 
+    model = PanDrugTransformer(
+        "InstaDeepAI/nucleotide-transformer-v2-500m-multi-species",
+        num_drugs=len(drug_to_id),
         head_hidden_size=best_hyperparams['head_hidden_size'],
-        drug_embedding_size=best_hyperparams['drug_embedding_size'],
+        drug_embed_dim=best_hyperparams['drug_embed_dim'],
+        num_attention_heads=best_hyperparams['num_attention_heads'],
         dropout_rate=best_hyperparams['dropout_rate']
     )
     # Loading weights
@@ -129,7 +146,7 @@ def run_inference_worker(gpu_id, data_chunk, drug_to_id, best_hyperparams):
         print(f"[GPU {gpu_id}, PID {worker_pid}]: Starting inference for {drug_name}.")
         dataset = InferenceDataset(data_chunk, tokenizer, 'extracted_context')
         # num_workers=0 is safer inside a multiprocessing process
-        loader = DataLoader(dataset, batch_size=512, shuffle=False, num_workers=0, collate_fn=data_collator)
+        loader = DataLoader(dataset, batch_size=2048, shuffle=False, num_workers=0, collate_fn=data_collator)
         
         all_preds_transformed = []
         with torch.no_grad():
@@ -196,7 +213,7 @@ if __name__ == "__main__":
         
     print(f"Loading R file: {rds_path}...")
     result_r = pyreadr.read_r(rds_path)
-    genome_df = result_r[list(result_r.keys())]
+    genome_df = result_r[list(result_r.keys())[0]]
     print(f"File loaded. Size: {genome_df.shape}")
 
     N_CONTEXT = int(''.join(filter(str.isdigit, CONTEXT_COL_NAME_FROM_MODEL))) // 2

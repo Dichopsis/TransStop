@@ -30,7 +30,7 @@ df_trials = df_trials.rename(columns={
     "params_warmup_ratio": "warmup_ratio",
     "params_lr_scheduler_type": "lr_scheduler_type",
     "params_head_hidden_size": "head_hidden_size",
-    "params_drug_embedding_size": "drug_embedding_size",
+    "params_drug_embed_dim": "drug_embed_dim",
     "params_dropout_rate": "dropout_rate"
 })
 
@@ -55,7 +55,7 @@ plt.savefig(f"{results_dir}/convergence_plot.png")
 # List of numerical hyperparameters to analyze
 numeric_params = [
     'learning_rate', 'weight_decay', 'warmup_ratio',
-    'dropout_rate', 'head_hidden_size', 'drug_embedding_size'
+    'dropout_rate', 'head_hidden_size', 'drug_embed_dim'
 ]
 
 # Create scatter plots for each hyperparameter

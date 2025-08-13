@@ -5,7 +5,7 @@ import numpy as np
 file_path = "./data/PTC.rds"
 result = pyreadr.read_r(file_path)  # Read the file
 
-df = list(result.values())
+df = list(result.values())[0]
 
 drugs = ["FUr", "Gentamicin", "CC90009", "G418", "Clitocine", "DAP", "SJ6986", "SRI", "Untreated"]
 for name in drugs:

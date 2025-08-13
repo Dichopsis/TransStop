@@ -111,54 +111,73 @@ class PTCDataset(Dataset):
         }
 
 class PanDrugTransformerForTrainer(torch.nn.Module):
-    def __init__(self, model_name, num_drugs, head_hidden_size=256, drug_embedding_size=16, dropout_rate=0.1, **kwargs):
+    def __init__(self, model_name, num_drugs, head_hidden_size=256, drug_embed_dim=64, num_attention_heads=8, dropout_rate=0.1, **kwargs):
         super().__init__()
         full_model = AutoModelForMaskedLM.from_pretrained(model_name, trust_remote_code=True, **kwargs)
         self.base_model = full_model.base_model
         self.config = self.base_model.config
-        self.drug_embedding = torch.nn.Embedding(num_drugs, drug_embedding_size)
-        base_model_hidden_size = self.base_model.config.hidden_size
+        
+        base_model_hidden_size = self.config.hidden_size
+        
+        # Drug embedding and projection to match sequence embedding dimension
+        self.drug_embedding = torch.nn.Embedding(num_drugs, drug_embed_dim)
+        self.query_projection = torch.nn.Linear(drug_embed_dim, base_model_hidden_size)
+        
+        # Cross-Attention Layer where drug query attends to sequence key/values
+        self.cross_attention = torch.nn.MultiheadAttention(
+            embed_dim=base_model_hidden_size,
+            num_heads=num_attention_heads,
+            batch_first=True
+        )
+        
+        # Regression Head
         self.reg_head = torch.nn.Sequential(
-            torch.nn.Linear(base_model_hidden_size + drug_embedding_size, head_hidden_size),
+            torch.nn.Linear(base_model_hidden_size, head_hidden_size),
             torch.nn.ReLU(),
             torch.nn.Dropout(dropout_rate),
             torch.nn.Linear(head_hidden_size, 1)
         )
-    
+
     def forward(self, input_ids, attention_mask, drug_id, labels=None, **kwargs):
-        output_attentions = kwargs.get("output_attentions", False)
-        output_hidden_states = kwargs.get("output_hidden_states", False) # Added for embeddings
+        output_hidden_states = kwargs.get("output_hidden_states", False)
+        # Get sequence embeddings from the base transformer
+        sequence_outputs = self.base_model(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
         
-        base_model_outputs = self.base_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states # Pass the argument
+        # Get drug embeddings and project to query dimension
+        drug_embeds = self.drug_embedding(drug_id)
+        query = self.query_projection(drug_embeds).unsqueeze(1) # Shape: (batch, 1, hidden_size)
+        
+        # Perform cross-attention: drug embedding queries the sequence embeddings
+        # attn_output shape: (batch, 1, hidden_size)
+        attn_output, attn_weights = self.cross_attention(
+            query=query,
+            key=sequence_outputs,
+            value=sequence_outputs
         )
-        # Use the CLS token [:, 0] for sequence representation
-        cls_embedding = base_model_outputs.last_hidden_state[:, 0]
-        # Get the drug embedding
-        drug_emb = self.drug_embedding(drug_id)
-        # Concatenate and pass through the regression head
-        combined_embedding = torch.cat([cls_embedding, drug_emb], dim=1)
-        logits = self.reg_head(combined_embedding).squeeze(-1)
         
-        # Return logits, attentions (if requested), and CLS embeddings (if requested)
-        if output_attentions and output_hidden_states:
-            return logits, base_model_outputs.attentions, cls_embedding
-        elif output_attentions:
-            return logits, base_model_outputs.attentions
-        elif output_hidden_states:
-            return logits, cls_embedding
+        # The attended output vector is the input to the regression head
+        context_vector = attn_output.squeeze(1) # Shape: (batch, hidden_size)
+        
+        logits = self.reg_head(context_vector).squeeze(-1)
+        
+        if output_hidden_states:
+            return logits, context_vector
+
+        loss = None
+        if labels is not None:
+            loss = torch.nn.MSELoss()(logits, labels)
+            return (loss, logits)
+
         return logits
 
 # --- Loading the Production Model ---
 print("Loading the production model...")
 tokenizer = AutoTokenizer.from_pretrained(PROD_MODEL_PATH, trust_remote_code=True)
 model = PanDrugTransformerForTrainer(
-    MODEL_HF_NAME, NUM_DRUGS, 
+    MODEL_HF_NAME, NUM_DRUGS,
     head_hidden_size=best_hyperparams['head_hidden_size'],
-    drug_embedding_size=best_hyperparams['drug_embedding_size'],
+    drug_embed_dim=best_hyperparams['drug_embed_dim'],
+    num_attention_heads=best_hyperparams['num_attention_heads'],
     dropout_rate=best_hyperparams['dropout_rate']
 )
 weights_path_safetensors = os.path.join(PROD_MODEL_PATH, 'model.safetensors')
@@ -173,6 +192,7 @@ elif os.path.exists(weights_path_bin):
 else:
     raise FileNotFoundError(f"No weight file ('model.safetensors' or 'pytorch_model.bin') found in {PROD_MODEL_PATH}")
 model.to(DEVICE)
+print(model)
 model.eval()
 print("Model loaded successfully.")
 
@@ -189,7 +209,7 @@ with torch.no_grad():
     for batch in tqdm(test_loader, desc="Predictions on the test set"):
         # Move only tensors to the GPU
         batch = {k: v.to(DEVICE) for k, v in batch.items() if isinstance(v, torch.Tensor)}
-        preds = model(**batch)
+        _, preds = model(**batch)
         all_preds_transformed.extend(preds.cpu().numpy())
 
 test_df['preds_transformed'] = all_preds_transformed
@@ -345,6 +365,41 @@ plt.savefig(os.path.join(RESULTS_DIR, "per_drug_correlation_grid.png"), dpi=300)
 plt.close()
 
 print("Grid of plots by drug saved in 'per_drug_correlation_grid.png'.")
+
+
+print("Generating violin plot of predicted RT distributions per drug...")
+
+# 1. Determine the order of drugs based on the median of their predictions
+median_preds = test_df.groupby('drug')['preds'].median().sort_values(ascending=False)
+drug_order = median_preds.index.tolist()
+
+# 2. Create the plot
+plt.figure(figsize=(18, 10))
+
+# Use seaborn's violinplot
+sns.violinplot(
+    data=test_df,
+    x='drug',
+    y='preds',
+    order=drug_order,
+    palette=drug_color_map,
+    inner='box'  # Display a boxplot inside the violin
+)
+
+# 3. Customize the plot
+#plt.title('Distribution of Predicted Readthrough (RT) by Drug', fontsize=20, pad=20)
+plt.ylabel('Predicted Readthrough Value (RT)', fontsize=16)
+plt.xlabel('Drug', fontsize=16)
+plt.xticks(rotation=45, ha='right') # Rotate labels for better readability
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.tight_layout()
+
+# 4. Save the figure
+plt.savefig(os.path.join(RESULTS_DIR, "drug_profile_violin_plot.png"), dpi=300)
+plt.close()
+
+print("Violin plot saved as 'drug_profile_violin_plot.png'.")
+
 
 toledano_r2 = {
     'Pan-drug': 0.83, 'CC90009': 0.55, 'Clitocine': 0.89, 'DAP': 0.87,
@@ -502,10 +557,10 @@ print("\n--- 6.0. Visualization of the Sequence Embedding Space ---")
 
 def get_sequence_embeddings(dataframe, tokenizer, model, device, context_col, batch_size=64):
     """
-    Extracts the CLS token embeddings for all sequences in a DataFrame.
+    Extracts the drug-conditioned context vectors for all sequences in a DataFrame.
     
-    The CLS token embedding ([CLS]) is a numerical representation of the entire sequence,
-    captured by the Transformer model. This is the representation we will visualize.
+    The context vector is the output of the cross-attention layer, representing
+    the sequence as conditioned by the drug. This is the representation we will visualize.
     """
     model.eval()
     embeddings = []
@@ -537,9 +592,9 @@ def get_sequence_embeddings(dataframe, tokenizer, model, device, context_col, ba
             attention_mask = batch['attention_mask'].to(device)
             drug_id = batch['drug_id'].to(device)
             
-            # The model's forward pass must return the CLS embeddings
-            _, cls_embeddings = model(input_ids=input_ids, attention_mask=attention_mask, drug_id=drug_id, output_hidden_states=True)
-            embeddings.append(cls_embeddings.cpu().numpy())
+            # The model's forward pass must return the context vectors
+            _, context_vectors = model(input_ids=input_ids, attention_mask=attention_mask, drug_id=drug_id, output_hidden_states=True)
+            embeddings.append(context_vectors.cpu().numpy())
             
     return np.vstack(embeddings)
 
@@ -628,10 +683,7 @@ else:
 
 # Plot 3: Coloring by drug
 # Objective: To understand if the sequence embedding is universal or specific to a drug.
-# Expected interpretation: A mix of colors (drugs) is a good sign.
-# This would mean that the model learns a general representation of the sequence (its "readability"),
-# independent of the drug, which is then combined with the drug embedding in
-# the regression head for the final prediction.
+# Expected interpretation: Since the visualized vector is the output of the cross-attention between the sequence and the drug, it is now drug-conditioned. We expect to see distinct clusters for different drugs or groups of drugs with similar mechanisms of action. This would demonstrate that the cross-attention mechanism successfully created specialized representations.
 plt.figure(figsize=(12, 10))
 sns.scatterplot(
     data=sample_df_for_umap,
@@ -651,61 +703,6 @@ plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_drug.png"), dpi=300)
 plt.close()
 print("UMAP by drug saved.")
 
-
-# --- SECTION 6.1: VISUALIZATION OF THE DRUG EMBEDDING SPACE ---
-print("\n--- 6.1. Visualization of the Drug Embedding Space ---")
-
-# --- Step 1: Extraction of Drug Embeddings ---
-# The embeddings are the weights of the `drug_embedding` layer of the model.
-# Each row of this weight matrix is the learned vector for a drug.
-print("Extracting drug embeddings from the model layer...")
-drug_embeddings = model.drug_embedding.weight.detach().cpu().numpy()
-
-# --- Step 2: Dimensionality Reduction with UMAP ---
-# We apply UMAP on these embeddings to project them into 2D.
-print("Applying UMAP for dimensionality reduction of drug embeddings...")
-# Adjusting UMAP parameters for a small number of points (drugs)
-# n_neighbors must be less than the number of points.
-umap_reducer_drugs = UMAP(n_components=2, random_state=SEED, n_neighbors=min(NUM_DRUGS - 1, 15), min_dist=0.1)
-reduced_drug_embeddings = umap_reducer_drugs.fit_transform(drug_embeddings)
-
-# --- Step 3: Creation of a DataFrame for Visualization ---
-# We assemble the results into a DataFrame for easy manipulation with Seaborn/Matplotlib.
-drug_umap_df = pd.DataFrame({
-    'umap_x': reduced_drug_embeddings[:, 0],
-    'umap_y': reduced_drug_embeddings[:, 1],
-    'drug_name': [id_to_drug[i] for i in range(NUM_DRUGS)] # Use the id -> name mapping
-})
-
-# --- Step 4: Visualization and Annotation ---
-# Creation of the scatter plot. Each point is a drug.
-# We annotate each point with its name for identification.
-print("Generating the UMAP plot for the drug embedding space...")
-plt.figure(figsize=(14, 12))
-colors_for_plot = drug_umap_df['drug_name'].map(drug_color_map)
-sns.scatterplot(
-    data=drug_umap_df,
-    x='umap_x',
-    y='umap_y',
-    c=colors_for_plot,
-    s=200, # Larger point size for readability
-    alpha=0.8,
-    edgecolor='k',
-    linewidth=1
-)
-
-# Adding annotations (drug names)
-for i, row in drug_umap_df.iterrows():
-    plt.text(row['umap_x'] + 0.05, row['umap_y'], row['drug_name'], fontsize=12, weight='bold')
-
-#plt.title("Drug Embedding Space (visualized with UMAP)", fontsize=20, pad=20)
-plt.xlabel("UMAP Dimension 1", fontsize=16)
-plt.ylabel("UMAP Dimension 2", fontsize=16)
-plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "drug_embedding_space_umap.png"), dpi=300)
-plt.close()
-print("UMAP plot of the drug embedding space saved.")
 
 
 # --- SECTION 7.0: IN-SILICO SATURATION MUTAGENESIS ---

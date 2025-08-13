@@ -158,8 +158,24 @@ for context in CONTEXTS_TO_TEST:
 
 # --- Finalization and Saving ---
 valid_context_scores = {k: v for k, v in context_scores.items() if v > -float('inf')}
-if not valid_context_scores: raise RuntimeError("All context evaluations failed.")
-best_context = max(valid_context_scores, key=valid_context_scores.get)
+if not valid_context_scores:
+    raise RuntimeError("All context evaluations failed.")
+
+best_r2_score = max(valid_context_scores.values())
+TOLERANCE = 0.01
+
+# Filter for contexts within the tolerance
+candidate_contexts = {
+    context: r2 for context, r2 in valid_context_scores.items()
+    if r2 >= best_r2_score - TOLERANCE
+}
+
+# Select the context with the smallest size from the candidates
+best_context = min(
+    candidate_contexts.keys(),
+    key=lambda context: int(context.split('_')[-1])
+)
+
 print(f"\n===> BEST CONTEXT FOUND: {best_context} (R2={valid_context_scores[best_context]:.4f})")
 
 final_best_config = {
