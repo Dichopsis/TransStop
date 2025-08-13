@@ -308,8 +308,8 @@ if 'stop_type' in df.columns:
     )
 
     fig.update_layout(margin=dict(t=50, l=25, r=25, b=25), font_size=16, title_font_size=22)
-    fig.update_traces(textinfo="label+percent parent") # '% parent' shows the internal composition of each drug
-
+    fig.update_traces(texttemplate="%{label}<br>%{percentParent:.1%}") # '% parent' shows the internal composition of each drug
+    fig.update_layout(margin=dict(t=50, l=25, r=25, b=25), font_size=16, title_font_size=22)
     sunburst_path = os.path.join(RESULTS_DIR, "best_drug_sunburst_inverted.png")
     fig.write_image(sunburst_path, width=1200, height=1200, scale=2)
     print(f"Inverted sunburst plot saved to: {sunburst_path}")
@@ -352,8 +352,17 @@ for i, drug_name in enumerate(drug_order):
     
     # 2. --- Layer 1: The "Cloud" (Manual Half-Violin) ---
     # Calculate the kernel density estimate (KDE)
-    kde = stats.gaussian_kde(drug_log_rt, bw_method='scott')
-    x_range = np.linspace(drug_log_rt.min(), drug_log_rt.max(), 100)
+    initial_kde = stats.gaussian_kde(drug_log_rt, bw_method='scott')
+    default_bandwidth = initial_kde.factor
+
+    adjusted_bandwidth = default_bandwidth * 0.5
+
+    kde = stats.gaussian_kde(drug_log_rt, bw_method=adjusted_bandwidth)
+    data_range = drug_log_rt.max() - drug_log_rt.min()
+    padding = data_range * 0.05
+    x_min = max(0, drug_log_rt.min() - padding) 
+    x_max = drug_log_rt.max() + padding
+    x_range = np.linspace(x_min, x_max, 200)
     density = kde(x_range)
     
     # Normalize the cloud height to be aesthetically pleasing
@@ -412,7 +421,7 @@ ax.grid(True, axis='x', linestyle='--', alpha=0.6)
 sns.despine(left=True, bottom=True, trim=True)
 plt.tight_layout()
 
-raincloud_path = os.path.join(RESULTS_DIR, "drug_profile_raincloud_plot_custom.svg")
+raincloud_path = os.path.join(RESULTS_DIR, "drug_profile_raincloud_plot_custom.png")
 plt.savefig(raincloud_path)
 plt.close()
 print(f"Custom raincloud plot saved to: {raincloud_path}")
