@@ -423,29 +423,33 @@ comparison_df = pd.DataFrame(comparison_data)
 comparison_df = comparison_df.sort_values(by='R2_Score', ascending=False)
 
 # Create the comparison plot
-plt.figure(figsize=(14, 10))
+plt.figure(figsize=(12, 9))
 barplot = sns.barplot(
     data=comparison_df,
     x='R2_Score',
     y='Drug',
     hue='Model',
-    palette={'Our Transformer': 'deepskyblue', 'Toledano et al.': 'lightgray'},
-    dodge=True
+    palette="pastel",
+    dodge=True,
+    edgecolor='black',
+    linewidth=0.5
 )
 
 #plt.title('Model Performance Comparison (R²)', fontsize=20, pad=20)
-plt.xlabel('R² Score', fontsize=16)
-plt.ylabel('Drug / Condition', fontsize=16)
-plt.xlim(0, 1.05)
-plt.grid(axis='x', linestyle='--', alpha=0.7)
-plt.legend(title='Model', fontsize=12, title_fontsize=14)
+plt.xlabel('R² Score', fontsize=14, weight='bold')
+plt.ylabel('Drug / Condition', fontsize=14, weight='bold')
+plt.xlim(0, 1.0)
+# Make grid more subtle
+plt.grid(axis='x', linestyle='--', alpha=0.6)
+plt.legend(title='Model', fontsize=12, title_fontsize=13, frameon=True, loc='lower right')
 
 # Add values on the bars
 for p in barplot.patches:
     width = p.get_width()
-    plt.text(width + 0.01, p.get_y() + p.get_height() / 2,
-             f'{width:.2f}',
-             ha='left', va='center', fontsize=11)
+    if width > 0.0: 
+        plt.text(width + 0.01, p.get_y() + p.get_height() / 2,
+                f'{width:.2f}',
+                ha='left', va='center', fontsize=12)
 
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "r2_comparison_barplot.png"), dpi=300)
