@@ -19,6 +19,7 @@ from sklearn.metrics import r2_score
 import json
 import os
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import seaborn as sns
 from umap import UMAP
 from tqdm import tqdm
@@ -268,7 +269,7 @@ plt.legend(title='Drug', fontsize=12, title_fontsize=14)
 plt.text(
     x=min_val, 
     y=max_val * 0.95, # Position the text in the top left
-    s=f'Global R² = {r2_global:.4f}',
+    s=f'Global R² = {r2_global:.2f}',
     fontdict={'size': 16, 'weight': 'bold', 'color': 'white'},
     bbox=dict(facecolor='black', alpha=0.6) # Background box for readability
 )
@@ -416,7 +417,7 @@ our_r2['Pan-drug'] = r2_global
 comparison_data = []
 for drug, r2_val in our_r2.items():
     if drug in toledano_r2:
-        comparison_data.append({'Drug': drug, 'R2_Score': r2_val, 'Model': 'Our Transformer'})
+        comparison_data.append({'Drug': drug, 'R2_Score': r2_val, 'Model': 'TransStop'})
         comparison_data.append({'Drug': drug, 'R2_Score': toledano_r2[drug], 'Model': 'Toledano et al.'})
 
 comparison_df = pd.DataFrame(comparison_data)
@@ -545,7 +546,8 @@ try:
         fmt=".2f",
         cmap='viridis',
         linewidths=.5,
-        vmin=0, vmax=1
+        vmin=0, vmax=1,
+        cbar_pos=(0.90, 0.81, 0.05, 0.18)  # Colorbar en haut à droite, hauteur réduite
     )
     plt.setp(cluster_map.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
     plt.setp(cluster_map.ax_heatmap.get_yticklabels(), rotation=0)
@@ -639,20 +641,26 @@ print("Generating UMAP plots...")
 # Objective: To see if the spatial organization of embeddings correlates with the prediction target.
 # Expected interpretation: We hope to see a color gradient, indicating that the model
 # places sequences with low and high readthrough efficiency in distinct regions.
-plt.figure(figsize=(12, 10))
-sns.scatterplot(
-    data=sample_df_for_umap,
-    x='umap_x',
-    y='umap_y',
-    hue='RT', # Color by the actual RT value
-    palette='viridis',
-    s=10,
-    alpha=0.7
+plt.figure(figsize=(13, 10))
+ax = plt.gca()
+points = ax.scatter(
+    sample_df_for_umap['umap_x'],
+    sample_df_for_umap['umap_y'],
+    c=sample_df_for_umap['RT'],
+    cmap='viridis',  # A more vibrant colormap for better gradient visibility
+    norm=mcolors.PowerNorm(gamma=0.3), # Apply power-law normalization to emphasize lower values
+    s=15,
+    alpha=0.7,
+    edgecolor='none'
 )
 #plt.title('UMAP of Sequence Embeddings (Colored by Actual RT)', fontsize=18)
 plt.xlabel('UMAP Dimension 1', fontsize=14)
 plt.ylabel('UMAP Dimension 2', fontsize=14)
-plt.legend(title='Actual RT', fontsize=10, title_fontsize=12)
+
+# Create and customize the colorbar
+cbar = plt.colorbar(points, ax=ax)
+cbar.set_label('Actual Readthrough (RT)', rotation=270, labelpad=20, fontsize=14)
+
 plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_rt.png"), dpi=300)
 plt.close()
@@ -756,8 +764,11 @@ def perform_saturation_mutagenesis(sequence, drug_id, model, tokenizer, device):
                 # Calculate the log2 fold change
                 log2_fold_change = np.log2(mutant_pred / wt_pred)
 
+            relative_pos = position - n_context
+            if relative_pos > 0:
+                relative_pos += 1
             mutagenesis_results.append({
-                'position': position - n_context, # Center position 0 on the stop codon
+                'position': relative_pos,
                 'original_nucleotide': original_nucleotide,
                 'mutated_nucleotide': mutated_nucleotide,
                 'log2_fold_change': log2_fold_change
@@ -789,7 +800,10 @@ def plot_mutagenesis_heatmap(df, title, filename, reference_sequence):
     # --- END OF FIX ---
 
     # Ensure canonical order of nucleotides on the Y-axis
-    heatmap_data = heatmap_data.reindex(['A', 'C', 'G', 'T'])
+    # Remplacement visuel de 'T' par 'U' pour l'affichage
+    display_nucleotides = ['A', 'C', 'G', 'U']
+    heatmap_data.index = display_nucleotides
+    heatmap_data = heatmap_data.reindex(display_nucleotides)
     
     plt.figure(figsize=(20, 6))
     heatmap = sns.heatmap(
@@ -801,7 +815,7 @@ def plot_mutagenesis_heatmap(df, title, filename, reference_sequence):
         linewidths=.5
     )
     heatmap.collections[0].colorbar.set_label("log2 Fold Change", rotation=270, labelpad=20)
-    full_title = f"Reference sequence: {reference_sequence}"
+    full_title = f"Reference sequence: {reference_sequence.replace('T', 'U')}"
     plt.title(full_title, fontsize=16, pad=20)
     plt.xlabel("Position (relative to the start of the stop codon)", fontsize=12)
     plt.ylabel("Mutation to", fontsize=12)
@@ -914,9 +928,17 @@ def calculate_epistasis(sequence, drug_id, model, tokenizer, device):
                 # Epistasis score
                 epistasis_score = observed_effect - expected_effect
                 
+                rel_pos1 = pos1 - n_context
+                if rel_pos1 > 0:
+                    rel_pos1 += 1
+                
+                rel_pos2 = pos2 - n_context
+                if rel_pos2 > 0:
+                    rel_pos2 += 1
+                
                 epistasis_results.append({
-                    'mutation1': f"{pos1-n_context}:{original_nuc1}>{new_nuc1}",
-                    'mutation2': f"{pos2-n_context}:{original_nuc2}>{new_nuc2}",
+                    'mutation1': f"{rel_pos1}:{original_nuc1}>{new_nuc1}".replace('T', 'U'),
+                    'mutation2': f"{rel_pos2}:{original_nuc2}>{new_nuc2}".replace('T', 'U'),
                     'epistasis_score': epistasis_score
                 })
 
@@ -969,7 +991,7 @@ def plot_epistasis_heatmap(df, title, filename, reference_sequence):
         linewidths=.1
     )
     heatmap.collections[0].colorbar.set_label("Epistasis Score", rotation=270, labelpad=20)
-    full_title = f"Reference sequence: {reference_sequence}"
+    full_title = f"Reference sequence: {reference_sequence.replace('T', 'U')}"
     plt.title(full_title, fontsize=20, pad=20)
     plt.xlabel("Mutation", fontsize=16)
     plt.ylabel("Mutation", fontsize=16)
