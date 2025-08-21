@@ -17,6 +17,7 @@ for name in drugs:
         (df["RT"].notna())  # Exclude missing RT values
     ]
     print(df_filtered.columns)
+    print(f"Number of entries for {name}: {len(df_filtered)}")
     df_filtered = df_filtered[['nt_seq','stop_type','GENEINFO','mutation_identifier','Ref_allele','Mutant_allele','RT']]
 
     # Convert nucleotide sequences to uppercase

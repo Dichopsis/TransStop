@@ -270,7 +270,7 @@ plt.text(
     x=min_val, 
     y=max_val * 0.95, # Position the text in the top left
     s=f'Global R² = {r2_global:.2f}',
-    fontdict={'size': 16, 'weight': 'bold', 'color': 'white'},
+    fontdict={'size': 16, 'color': 'white'},
     bbox=dict(facecolor='black', alpha=0.6) # Background box for readability
 )
 
@@ -281,7 +281,7 @@ plt.ylim(min_val, max_val)
 
 # 7. Save the figure
 plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "global_correlation_plot.png"), dpi=300)
+plt.savefig(os.path.join(RESULTS_DIR, "global_correlation_plot.png"), format="png", dpi=600)
 plt.close()
 
 print("Global correlation plot saved in 'global_correlation_plot.png'.")
@@ -336,18 +336,18 @@ for i, drug_name in enumerate(drug_list):
     ax.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=1.5)
     
     # Add the title and R²
-    ax.set_title(f'{drug_name}', fontsize=14, weight='bold')
+    ax.set_title(f'{drug_name}', fontsize=14)
     ax.text(
         x=min_val,
         y=max_val * 0.9,
         s=f'R² = {r2_value:.4f}',
-        fontdict={'size': 12, 'weight': 'bold', 'color': 'black'},
+        fontdict={'size': 12, 'color': 'black'},
         bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.3')
     )
     
     # Customize the axes
-    ax.set_xlabel('Actual Value (RT)', fontsize=10)
-    ax.set_ylabel('Predicted Value (RT)', fontsize=10)
+    ax.set_xlabel('Actual Value (RT)', fontsize=12)
+    ax.set_ylabel('Predicted Value (RT)', fontsize=12)
     ax.grid(True, linestyle='--', linewidth=0.5)
     ax.axis('equal') # Ensure a 1:1 ratio
     ax.set_xlim(min_val, max_val)
@@ -362,7 +362,7 @@ for j in range(num_drugs, len(axes)):
 
 # 5. Adjust the layout and save
 fig.tight_layout(rect=[0, 0.03, 1, 0.98]) # rect leaves space for the suptitle
-plt.savefig(os.path.join(RESULTS_DIR, "per_drug_correlation_grid.png"), dpi=300)
+plt.savefig(os.path.join(RESULTS_DIR, "per_drug_correlation_grid.png"), format='png', dpi=600)
 plt.close()
 
 print("Grid of plots by drug saved in 'per_drug_correlation_grid.png'.")
@@ -396,7 +396,7 @@ plt.grid(axis='y', linestyle='--', alpha=0.7)
 plt.tight_layout()
 
 # 4. Save the figure
-plt.savefig(os.path.join(RESULTS_DIR, "drug_profile_violin_plot.png"), dpi=300)
+plt.savefig(os.path.join(RESULTS_DIR, "drug_profile_violin_plot.png"), format='png', dpi=600)
 plt.close()
 
 print("Violin plot saved as 'drug_profile_violin_plot.png'.")
@@ -437,8 +437,8 @@ barplot = sns.barplot(
 )
 
 #plt.title('Model Performance Comparison (R²)', fontsize=20, pad=20)
-plt.xlabel('R² Score', fontsize=14, weight='bold')
-plt.ylabel('Drug / Condition', fontsize=14, weight='bold')
+plt.xlabel('R² Score', fontsize=16)
+plt.ylabel('Drug / Condition', fontsize=16)
 plt.xlim(0, 1.0)
 # Make grid more subtle
 plt.grid(axis='x', linestyle='--', alpha=0.6)
@@ -453,7 +453,7 @@ for p in barplot.patches:
                 ha='left', va='center', fontsize=12)
 
 plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "r2_comparison_barplot.png"), dpi=300)
+plt.savefig(os.path.join(RESULTS_DIR, "r2_comparison_barplot.png"), format='png', dpi=600)
 plt.close()
 print("R² comparison bar plot saved.")
     
@@ -485,7 +485,7 @@ def generate_sequence_logos_for_drug(drug_name, drug_df, context_col, n_seqs=100
     ax2.set_ylabel("Bits")
     
     plt.tight_layout()
-    plt.savefig(os.path.join(RESULTS_DIR, f"sequence_logo_{drug_name}.png"), dpi=300)
+    plt.savefig(os.path.join(RESULTS_DIR, f"sequence_logo_{drug_name}.png"), format='png', dpi=600)
     plt.close()
     print(f"Sequence logo saved for {drug_name}.")
 
@@ -552,7 +552,7 @@ try:
     plt.setp(cluster_map.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
     plt.setp(cluster_map.ax_heatmap.get_yticklabels(), rotation=0)
     #cluster_map.fig.suptitle('Functional Similarity of Response Profiles', fontsize=20, y=1.02)
-    plt.savefig(os.path.join(RESULTS_DIR, "drug_similarity_clustermap.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(RESULTS_DIR, "drug_similarity_clustermap.png"), format='png', dpi=600, bbox_inches='tight')
     plt.close()
     print("Drug similarity clustermap saved.")
 except Exception as e:
@@ -654,15 +654,15 @@ points = ax.scatter(
     edgecolor='none'
 )
 #plt.title('UMAP of Sequence Embeddings (Colored by Actual RT)', fontsize=18)
-plt.xlabel('UMAP Dimension 1', fontsize=14)
-plt.ylabel('UMAP Dimension 2', fontsize=14)
+plt.xlabel('UMAP Dimension 1', fontsize=16)
+plt.ylabel('UMAP Dimension 2', fontsize=16)
 
 # Create and customize the colorbar
 cbar = plt.colorbar(points, ax=ax)
 cbar.set_label('Actual Readthrough (RT)', rotation=270, labelpad=20, fontsize=14)
 
 plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_rt.png"), dpi=300)
+plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_rt.png"), format='png', dpi=600)
 plt.close()
 print("UMAP by RT saved.")
 
@@ -673,21 +673,31 @@ print("UMAP by RT saved.")
 # would be striking proof that the model has captured this essential information.
 if 'stop_type' in sample_df_for_umap.columns:
     plt.figure(figsize=(12, 10))
-    sns.scatterplot(
+    ax = sns.scatterplot(
         data=sample_df_for_umap,
         x='umap_x',
         y='umap_y',
         hue='stop_type', # Color by stop codon type
         palette='tab10', # A discrete palette for categories
         s=10,
+        edgecolor='none',
         alpha=0.7
     )
     #plt.title('UMAP of Sequence Embeddings (Colored by Stop Codon Type)', fontsize=18)
-    plt.xlabel('UMAP Dimension 1', fontsize=14)
-    plt.ylabel('UMAP Dimension 2', fontsize=14)
-    plt.legend(title='Stop Codon Type', fontsize=10, title_fontsize=12)
+    plt.xlabel('UMAP Dimension 1', fontsize=16)
+    plt.ylabel('UMAP Dimension 2', fontsize=16)
+    handles, labels = ax.get_legend_handles_labels()
+    labels_upper = [l.upper() for l in labels]
+    ax.legend(
+        handles=handles,
+        labels=labels_upper,
+        title='Stop Codon Type', 
+        fontsize=10, 
+        title_fontsize=12,
+        markerscale=3
+    )
     plt.tight_layout()
-    plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_stop_type.png"), dpi=300)
+    plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_stop_type.png"), format='png', dpi=600)
     plt.close()
     print("UMAP by stop codon type saved.")
 else:
@@ -704,14 +714,15 @@ sns.scatterplot(
     hue='drug', # Color by drug
     palette=drug_color_map,
     s=10,
+    edgecolor='none',
     alpha=0.7
 )
 #plt.title('UMAP of Sequence Embeddings (Colored by Drug)', fontsize=18)
-plt.xlabel('UMAP Dimension 1', fontsize=14)
-plt.ylabel('UMAP Dimension 2', fontsize=14)
-plt.legend(title='Drug', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., fontsize=10, title_fontsize=12)
+plt.xlabel('UMAP Dimension 1', fontsize=16)
+plt.ylabel('UMAP Dimension 2', fontsize=16)
+plt.legend(title='Drug', fontsize=10, title_fontsize=12, markerscale=3)
 plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_drug.png"), dpi=300)
+plt.savefig(os.path.join(RESULTS_DIR, "umap_embeddings_by_drug.png"), format='png', dpi=600)
 plt.close()
 print("UMAP by drug saved.")
 
@@ -814,13 +825,13 @@ def plot_mutagenesis_heatmap(df, title, filename, reference_sequence):
         fmt=".2f",
         linewidths=.5
     )
-    heatmap.collections[0].colorbar.set_label("log2 Fold Change", rotation=270, labelpad=20)
+    heatmap.collections[0].colorbar.set_label("log2 Fold Change", rotation=270, labelpad=20, fontsize=12)
     full_title = f"Reference sequence: {reference_sequence.replace('T', 'U')}"
     plt.title(full_title, fontsize=16, pad=20)
-    plt.xlabel("Position (relative to the start of the stop codon)", fontsize=12)
-    plt.ylabel("Mutation to", fontsize=12)
+    plt.xlabel("Position (relative to the start of the stop codon)", fontsize=16)
+    plt.ylabel("Mutation to", fontsize=16)
     plt.tight_layout()
-    plt.savefig(filename, dpi=300)
+    plt.savefig(filename, format='png', dpi=600)
     plt.close()
     print(f"Mutagenesis heatmap saved in '{filename}'.")
 
@@ -990,18 +1001,19 @@ def plot_epistasis_heatmap(df, title, filename, reference_sequence):
         square=True, # Ensure cells are square for better readability.
         linewidths=.1
     )
-    heatmap.collections[0].colorbar.set_label("Epistasis Score", rotation=270, labelpad=20)
+    heatmap.collections[0].colorbar.set_label("Epistasis Score", rotation=270, labelpad=20, fontsize=14)
+    heatmap.collections[0].colorbar.ax.tick_params(labelsize=12)
     full_title = f"Reference sequence: {reference_sequence.replace('T', 'U')}"
     plt.title(full_title, fontsize=20, pad=20)
-    plt.xlabel("Mutation", fontsize=16)
-    plt.ylabel("Mutation", fontsize=16)
+    plt.xlabel("Mutation", fontsize=16, labelpad=20)
+    plt.ylabel("Mutation", fontsize=16, labelpad=20)
     
     # Improve readability of axis labels.
-    plt.xticks(rotation=90, fontsize=8)
-    plt.yticks(rotation=0, fontsize=8)
+    plt.xticks(rotation=90, fontsize=12)
+    plt.yticks(rotation=0, fontsize=12)
     
     plt.tight_layout()
-    plt.savefig(filename, dpi=300)
+    plt.savefig(filename, format='png', dpi=600)
     plt.close()
     print(f"Epistasis heatmap saved in '{filename}'.")
 

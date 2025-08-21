@@ -98,7 +98,7 @@ sns.heatmap(
 plt.xlabel('Best Drug (TransStop)', fontsize=16)
 plt.ylabel('Best Drug (Toledano et al. Model)', fontsize=16)
 plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "best_drug_confusion_matrix.png"), dpi=300)
+plt.savefig(os.path.join(RESULTS_DIR, "best_drug_confusion_matrix.png"), format='png', dpi=600)
 plt.close()
 print("Confusion matrix saved.")
 
@@ -113,7 +113,7 @@ df['our_best_pred_val'] = df[OUR_PREDS_COLS].max(axis=1)
 # We need to dynamically build the column name of our prediction
 # corresponding to the drug chosen by Toledano
 # For example, if toledano_best_drug is 'DAP', we want the value of 'our_preds_DAP'
-print("Calculating our model's prediction for Toledano's choice...")
+print("Calculating TransStop's prediction for Toledano et al.'s choice...")
 
 # 1. Create a DataFrame containing only our predictions, with simple column names
 our_preds_df_simple = df[OUR_PREDS_COLS].rename(columns=OUR_MAP)
@@ -156,12 +156,13 @@ plt.figure(figsize=(12, 7))
 sns.histplot(disagreement_df['our_gain'], bins=50, kde=False) # kde=False is often better with log scale
 plt.yscale('log')
 #plt.title('Distribution of Predicted Performance Gain (Log Scale)', fontsize=16)
-plt.xlabel('RT Gain (Our Best Drug vs. Toledano\'s Choice)', fontsize=14)
-plt.ylabel('Number of PTCs (Log Scale)', fontsize=14)
-plt.axvline(x=0, color='red', linestyle='--')
-plt.grid(True, which='major', linestyle='--')
+plt.xlabel('RT Gain (Our Best Drug vs. Toledano\'s Choice)', fontsize=16)
+plt.ylabel('Number of PTCs (Log Scale)', fontsize=16)
+plt.xlim(left=0)  # Ensure the x-axis starts at 0
+#plt.axvline(x=0, color='red', linestyle='--')
+plt.grid(True, which='major', linestyle='--', color='#cccccc', alpha=0.6)
 plt.tight_layout()
-plt.savefig(os.path.join(RESULTS_DIR, "disagreement_gain_distribution_log.png"), dpi=300)
+plt.savefig(os.path.join(RESULTS_DIR, "disagreement_gain_distribution_log.png"), format='png', dpi=600)
 plt.close()
 print("Gain distribution plots saved.")
 
@@ -239,18 +240,22 @@ if num_high_gain_cases > 0:
     plt.figure(figsize=(10, 7))
     barplot = sns.barplot(data=comparison_df_melted, x='Stop_Type', y='Proportion', hue='Group', palette='pastel')
     #plt.title('Stop Type Distribution: High-Impact Cases vs. Baseline', fontsize=16)
-    plt.ylabel('Proportion of Cases', fontsize=14)
-    plt.xlabel('Stop Codon Type', fontsize=14)
+    plt.ylabel('Proportion of Cases', fontsize=16)
+    plt.xlabel('Stop Codon Type', fontsize=16)
+    current_labels = barplot.get_xticklabels()
+    uppercase_labels = [label.get_text().upper() for label in current_labels]
+    barplot.set_xticklabels(uppercase_labels)
     plt.grid(axis='y', linestyle='--')
     plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.0%}'.format(y))) # Format Y-axis as percentages
     for p in barplot.patches:
-        barplot.annotate(format(p.get_height(), '.1%'), 
-                    (p.get_x() + p.get_width() / 2., p.get_height()), 
-                    ha = 'center', va = 'center', 
-                    xytext = (0, 9), 
-                    textcoords = 'offset points')
+        if p.get_height() > 0:
+            barplot.annotate(format(p.get_height(), '.1%'), 
+                        (p.get_x() + p.get_width() / 2., p.get_height()), 
+                        ha = 'center', va = 'center', 
+                        xytext = (0, 9), 
+                        textcoords = 'offset points')
     plt.tight_layout()
-    plt.savefig(os.path.join(RESULTS_DIR, "high_gain_stop_type_analysis.png"), dpi=300)
+    plt.savefig(os.path.join(RESULTS_DIR, "high_gain_stop_type_analysis.png"), format='png', dpi=600)
     plt.close()
     print("Stop type analysis plot saved.")
 
@@ -266,16 +271,19 @@ if num_high_gain_cases > 0:
     plt.figure(figsize=(12, 10))
     barplot_pairs = sns.barplot(x=change_pair_counts.values, y=change_pair_counts.index, palette='viridis_r', hue=change_pair_counts.index, dodge=False, legend=False)
     #plt.title('Top 10 High-Impact "Changes of Mind" (Gain > 1.0)', fontsize=18)
-    plt.xlabel('Number of PTCs', fontsize=14)
-    plt.ylabel('Drug Change (Toledano -> TransStop)', fontsize=14)
+    plt.xlabel('Number of PTCs', fontsize=16)
+    plt.ylabel('Drug Change (Toledano -> TransStop)', fontsize=16)
     plt.grid(axis='x', linestyle='--')
+    
+    max_count = change_pair_counts.values.max()
+    plt.xlim(right=max_count * 1.1) 
     
     # Add counts on the bars
     for i, (count, pair) in enumerate(zip(change_pair_counts.values, change_pair_counts.index)):
         barplot_pairs.text(count, i, f' {count:,}', va='center', ha='left')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(RESULTS_DIR, "high_gain_drug_switch_analysis.png"), dpi=300)
+    plt.savefig(os.path.join(RESULTS_DIR, "high_gain_drug_switch_analysis.png"), format='png', dpi=600)
     plt.close()
     print("Drug switch analysis plot saved.")
 
@@ -296,6 +304,7 @@ print("Generating the Inverted Sunburst Plot...")
 
 if 'stop_type' in df.columns:
     sunburst_data = df.groupby(['our_best_drug', 'stop_type']).size().reset_index(name='ptc_count')
+    sunburst_data['stop_type'] = sunburst_data['stop_type'].str.upper()
 
     # Create the interactive figure with the inverted order in 'path'
     fig = px.sunburst(
@@ -422,7 +431,7 @@ sns.despine(left=True, bottom=True, trim=True)
 plt.tight_layout()
 
 raincloud_path = os.path.join(RESULTS_DIR, "drug_profile_raincloud_plot_custom.png")
-plt.savefig(raincloud_path)
+plt.savefig(raincloud_path, format='png', dpi=600)
 plt.close()
 print(f"Custom raincloud plot saved to: {raincloud_path}")
 
@@ -494,15 +503,21 @@ else:
                 )
                 ax.set_title(name, fontsize=18, pad=15)
                 ax.set_xlabel("")
-                ax.set_ylabel("Drug" if i == 0 else "", fontsize=14)
+                ax.set_ylabel("Drug" if i == 0 else "", fontsize=16)
                 ax.tick_params(axis='x', labelsize=12)
                 ax.tick_params(axis='y', labelsize=12)
+                current_labels = ax.get_xticklabels()
+                uppercase_labels = [label.get_text().upper() for label in current_labels]
+                ax.set_xticklabels(uppercase_labels)
+                
+                if i > 0:
+                    ax.tick_params(axis='y', length=0)
 
         fig.text(0.5, 0.04, 'Stop Codon Type', ha='center', va='center', fontsize=16)
         #fig.suptitle("Predicted Therapeutic Profile for Key CFTR Mutations", fontsize=22, y=0.98)
         fig.tight_layout(rect=[0, 0.05, 1, 0.95])
 
-        plt.savefig(os.path.join(RESULTS_DIR, "cftr_therapeutic_profiles_heatmap.png"), dpi=300)
+        plt.savefig(os.path.join(RESULTS_DIR, "cftr_therapeutic_profiles_heatmap.png"), format='png', dpi=600)
         plt.close()
         print("CFTR therapeutic profile heatmaps saved.")
 
