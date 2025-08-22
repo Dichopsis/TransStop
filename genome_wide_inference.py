@@ -26,10 +26,10 @@ import time
 
 # --- Global Configuration ---
 # These variables will be used by all processes
-RESULTS_DIR = "./results/"
-MODELS_DIR = "./models/"
+RESULTS_DIR = "../results/"
+MODELS_DIR = "../models/"
 # UPDATE THIS PATH
-DATA_DIR = "./data/" 
+DATA_DIR = "../data/" 
 PROD_MODEL_PATH = os.path.join(MODELS_DIR, "production_model")
 # UPDATE THIS COLUMN
 csv_path = os.path.join(RESULTS_DIR, "systematic_evaluation_log.csv")  # Remplace par le vrai nom de fichier

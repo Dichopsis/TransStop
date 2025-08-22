@@ -21,7 +21,7 @@ import plotly.express as px
 
 
 # --- Configuration ---
-RESULTS_DIR = "./results/"
+RESULTS_DIR = "../results/"
 FINAL_PREDS_PATH = os.path.join(RESULTS_DIR, "our_genome_wide_predictions_full.parquet")
 
 # Define drug names (without "Untreated" for treatability analysis)

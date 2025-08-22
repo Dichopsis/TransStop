@@ -30,9 +30,9 @@ from itertools import combinations
 # --- Configuration and Artifact Loading ---
 print("--- PART 3: DEEP MODEL INTERPRETATION AND INSIGHT GENERATION (Corrected) ---")
 
-RESULTS_DIR = "./results/"
-MODELS_DIR = "./models/"
-PROCESSED_DATA_DIR = "./processed_data/"
+RESULTS_DIR = "../results/"
+MODELS_DIR = "../models/"
+PROCESSED_DATA_DIR = "../processed_data/"
 PROD_MODEL_PATH = os.path.join(MODELS_DIR, "production_model")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {DEVICE}")

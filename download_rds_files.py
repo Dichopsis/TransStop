@@ -21,7 +21,7 @@ def download_file(url, filename):
 
 if __name__ == "__main__":
     # Directory to store the downloaded data
-    data_dir = "data"
+    data_dir = "../data"
     os.makedirs(data_dir, exist_ok=True)
 
     # List of files to download: (URL, local_filename)

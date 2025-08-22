@@ -5,8 +5,8 @@ import os
 print("--- Starting reconstruction of the drug_to_id map ---")
 
 # --- Configure these paths to match your structure ---
-PROCESSED_DATA_DIR = "./processed_data/"
-MODELS_DIR = "./models/"
+PROCESSED_DATA_DIR = "../processed_data/"
+MODELS_DIR = "../models/"
 # -------------------------------------------------------------------
 
 # The path to the file that was used to create the original map

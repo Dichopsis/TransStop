@@ -28,9 +28,9 @@ set_seed(SEED)
 print("--- PART 2a: CONTEXT EVALUATION FOR NUCTRANSFORMER ---")
 
 # --- Configuration & Data Loading ---
-PROCESSED_DATA_DIR = "./processed_data/"
-RESULTS_DIR = "./results/"
-TEMP_MODEL_DIR = "./temp_models_context_search/"
+PROCESSED_DATA_DIR = "../processed_data/"
+RESULTS_DIR = "../results/"
+TEMP_MODEL_DIR = "../temp_models_context_search/"
 for dir_path in [RESULTS_DIR, TEMP_MODEL_DIR]: os.makedirs(dir_path, exist_ok=True)
 
 train_df = pd.read_csv(os.path.join(PROCESSED_DATA_DIR, "train_df.csv"))

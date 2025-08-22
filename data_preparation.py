@@ -8,8 +8,8 @@ from tqdm import tqdm
 print("--- PART 1: DATA INGESTION, PREPARATION, AND STRATEGY DEFINITION ---")
 
 # --- 1.1. Data Ingestion and Scoping ---
-DATA_DIR = "./data/"
-OUTPUT_DIR = "./processed_data/"
+DATA_DIR = "../data/"
+OUTPUT_DIR = "../processed_data/"
 
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)

@@ -33,10 +33,10 @@ set_seed(SEED)
 print("--- PART 2b: HYPERPARAMETER OPTIMIZATION AND FINAL TRAINING ---")
 
 # --- Paths and Directories ---
-PROCESSED_DATA_DIR = "./processed_data/"
-RESULTS_DIR = "./results/"
-MODELS_DIR = "./models/"
-TEMP_MODEL_DIR_HPARAM = "./temp_models_hparam/"
+PROCESSED_DATA_DIR = "../processed_data/"
+RESULTS_DIR = "../results/"
+MODELS_DIR = "../models/"
+TEMP_MODEL_DIR_HPARAM = "../temp_models_hparam/"
 
 for dir_path in [MODELS_DIR, TEMP_MODEL_DIR_HPARAM]: os.makedirs(dir_path, exist_ok=True)
 
