@@ -78,63 +78,63 @@ def create_figure(
 # FIGURE 1 (2x2 carré)
 create_figure(
     image_paths=[
-        ['results/global_correlation_plot.png', 'results/per_drug_correlation_grid.png'],
-        ['results/r2_comparison_barplot.png', None]
+        ['../../results/global_correlation_plot.png', '../results/per_drug_correlation_grid.png'],
+        ['../results/r2_comparison_barplot.png', None]
     ],
     labels=[['A', 'B'], ['C', '']],
-    output_filename='results/Figure1.png',
+    output_filename='../results/Figure1.png',
     figsize=(12, 12)
 )
 
 # FIGURE 2 (2x2)
 create_figure(
     image_paths=[
-        ['results/umap_embeddings_by_stop_type.png', 'results/umap_embeddings_by_rt.png'],
-        ['results/umap_embeddings_by_drug.png', 'results/drug_similarity_clustermap.png']
+        ['../results/umap_embeddings_by_stop_type.png', '../results/umap_embeddings_by_rt.png'],
+        ['../results/umap_embeddings_by_drug.png', '../results/drug_similarity_clustermap.png']
     ],
     labels=[['A', 'B'], ['C', 'D']],
-    output_filename='results/Figure2.png',
+    output_filename='../results/Figure2.png',
     figsize=(14, 12)
 )
 
 # FIGURE 3 (1x2)
 create_figure(
     image_paths=[
-        ['results/saturation_mutagenesis_heatmap_DAP_uga.png', 'results/epistasis_heatmap_DAP_uga.png']
+        ['../results/saturation_mutagenesis_heatmap_DAP_uga.png', '../results/epistasis_heatmap_DAP_uga.png']
     ],
     labels=[['A', 'B']],
-    output_filename='results/Figure3.png',
+    output_filename='../results/Figure3.png',
     figsize=(14, 6)
 )
 
 # FIGURE 4 (1x2)
 create_figure(
     image_paths=[
-        ['results/best_drug_sunburst_inverted.png', 'results/drug_profile_raincloud_plot_custom.png']
+        ['../results/best_drug_sunburst_inverted.png', '../results/drug_profile_raincloud_plot_custom.png']
     ],
     labels=[['A', 'B']],
-    output_filename='results/Figure4.png',
+    output_filename='../results/Figure4.png',
     figsize=(16, 7)
 )
 
 # FIGURE 5 (2x2)
 create_figure(
     image_paths=[
-        ['results/best_drug_confusion_matrix.png', 'results/disagreement_gain_distribution_log.png'],
-        ['results/high_gain_stop_type_analysis.png', 'results/high_gain_drug_switch_analysis.png']
+        ['../results/best_drug_confusion_matrix.png', '../results/disagreement_gain_distribution_log.png'],
+        ['../results/high_gain_stop_type_analysis.png', '../results/high_gain_drug_switch_analysis.png']
     ],
     labels=[['A', 'B'], ['C', 'D']],
-    output_filename='results/Figure5.png',
+    output_filename='../results/Figure5.png',
     figsize=(14, 12)
 )
 
 # FIGURE 6 (1x1)
 create_figure(
     image_paths=[
-        ['results/cftr_therapeutic_profiles_heatmap.png']
+        ['../results/cftr_therapeutic_profiles_heatmap.png']
     ],
     labels=[['']], 
-    output_filename='results/Figure6.png',
+    output_filename='../results/Figure6.png',
     figsize=(8, 7)
 )
 
