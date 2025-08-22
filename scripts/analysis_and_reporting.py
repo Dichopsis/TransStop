@@ -1,14 +1,3 @@
-#!/home2020/home/icube/nhaas/.conda/envs/TransStop/bin/python
-
-#SBATCH -p publicgpu
-#SBATCH -N 1
-#SBATCH -x hpc-n932
-#SBATCH --gres=gpu:2
-#SBATCH --constraint="gpuh100|gpua100|gpul40s|gpua40|gpurtx6000"
-#SBATCH --mail-type=ALL
-#SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
-#SBATCH --job-name=analysis_and_reporting
-#SBATCH --output=analysis_and_reporting_%j.out
 
 import pandas as pd
 import numpy as np

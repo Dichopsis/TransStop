@@ -1,6 +1,3 @@
-# This script downloads RDS files from figshare.
-# These files are necessary for the data preparation and analysis steps.
-
 import requests
 import os
 

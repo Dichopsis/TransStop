@@ -1,15 +1,3 @@
-#!/home2020/home/icube/nhaas/.conda/envs/TransStop/bin/python
-
-#SBATCH -p publicgpu
-#SBATCH -N 1
-#SBATCH -x hpc-n932
-#SBATCH --gres=gpu:4
-#SBATCH --constraint="gpuh100|gpua100|gpul40s|gpua40|gpurtx6000"
-#SBATCH --mail-type=ALL
-#SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
-#SBATCH --job-name=hyperparam_and_final_training
-#SBATCH --output=hyperparam_and_final_training_%j.out
-
 import pandas as pd
 import numpy as np
 import torch

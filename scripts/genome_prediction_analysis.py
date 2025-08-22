@@ -1,14 +1,3 @@
-#!/home2020/home/icube/nhaas/.conda/envs/TransStop/bin/python
-
-
-#SBATCH -N 1
-#SBATCH --time=01:00:00
-#SBATCH --mail-type=END
-#SBATCH --mail-user=nicolas.haas3@etu.unistra.fr
-#SBATCH --job-name=genome_prediction_analysis
-#SBATCH --output=genome_prediction_analysis_%j.out
-
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt

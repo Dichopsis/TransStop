@@ -1,4 +1,3 @@
-# download_models.py
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 print("Starting pre-download of models and tokenizers...")
